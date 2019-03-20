@@ -40,8 +40,8 @@ class SpeckleSeries():
                  pScale=0.01, numBin=None, fitPts=11):
         # Define filenames for a and b fPlters according to data or simulation.
         if source == 'data':
-            self.aFile = f'DSSIData/img_a_{fileNumber}.fits'
-            self.bFile = f'DSSIData/img_b_{fileNumber}.fits'
+            self.aFile = f'rawSpeckles/img_a_{fileNumber}.fits'
+            self.bFile = f'rawSpeckles/img_b_{fileNumber}.fits'
         elif source == 'sim':
             self.aFile = f'simulations/sim_a_1000frames_s{fileNumber}.fits'
             self.bFile = f'simulations/sim_b_1000frames_s{fileNumber}.fits'
@@ -398,13 +398,13 @@ class SpeckleSeries():
         '''
         Save accumulated/binned images to FITS file.
         If specified, the save to directory located at 'path', or
-        default to baseDir/DSSIData
+        default to baseDir/accumulatedSpeckles/
         TO DO
         - add checks that the accumulated/binned files exist before trying
             to save them
         '''
         if path is None:
-            path = self.baseDir + 'DSSIData/'
+            path = self.baseDir + 'accumulatedSpeckles/'
 
         saveA = path + '/' + self.aFile.split('.')[0].split('/')[-1]
         saveB = path + '/' + self.bFile.split('.')[0].split('/')[-1]

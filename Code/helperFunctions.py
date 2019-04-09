@@ -135,3 +135,47 @@ def estimateBackground(image, maskSize, maskCenter=True, plot=False, pScale=.01,
     
     # return standard deviation of this clipped background
     return clippedCenteredStd
+
+def imageCOM(img):
+    '''
+    Find the center of mass of given image.
+    Returns:
+    ========
+    Tuple of ints corrsponding to the indices of the center of mass
+    '''
+    indices = np.linspace(0, img.shape[0]-1, img.shape[0])
+    comX = np.dot(img.sum(axis=1), indices) / img.sum()
+    comY = np.dot(img.sum(axis=0), indices) / img.sum()
+    return int(np.rint(comX)), int(np.rint(comY))
+
+def imageFWHM(img, x, y):
+    '''
+    Given an image and coordinates x,y (e.g. CoM coordinates), find
+    the approximate FWHM of the distribution. To output the FWHM of 
+    the PSF, input the CoM coordinates.
+    Returns:
+    ========
+    FWHM of image, averaged between x and y slices.
+    '''
+    # take a slice through x
+    sliceX = np.copy(img[x,:])
+    # subtract the minimum
+    sliceX -= np.min(sliceX)
+    # find what's above/below the half max
+    tempX = sliceX - sliceX.max()/2
+    
+    # find where we change from above to below
+    dX = np.sign(tempX[:-1]) - np.sign(tempX[1:])
+    # difference is FWHM
+    fwhmX = np.where(dX>0)[0][-1] - np.where(dX<0)[0][0]
+    
+    # repeat for y direction
+    sliceY = np.copy(img[:,y])
+    sliceY -= np.min(sliceY)
+    tempY = sliceY - sliceY.max()/2
+    
+    dY = np.sign(tempY[:-1]) - np.sign(tempY[1:])
+    fwhmY = np.where(dY<0)[0][0] - np.where(dY>0)[0][0]
+    
+    # return averaged FWHM
+    return (fwhmX + fwhmY) / 2

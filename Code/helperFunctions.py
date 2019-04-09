@@ -167,7 +167,7 @@ def imageFWHM(img, x, y):
     # find where we change from above to below
     dX = np.sign(tempX[:-1]) - np.sign(tempX[1:])
     # difference is FWHM
-    fwhmX = np.where(dX>0)[0][-1] - np.where(dX<0)[0][0]
+    fwhmX = abs(np.where(dX>0)[0][-1] - np.where(dX<0)[0][0])
     
     # repeat for y direction
     sliceY = np.copy(img[:,y])
@@ -175,7 +175,7 @@ def imageFWHM(img, x, y):
     tempY = sliceY - sliceY.max()/2
     
     dY = np.sign(tempY[:-1]) - np.sign(tempY[1:])
-    fwhmY = np.where(dY<0)[0][0] - np.where(dY>0)[0][0]
+    fwhmY = abs(np.where(dY<0)[0][0] - np.where(dY>0)[0][0])
     
     # return averaged FWHM
     return (fwhmX + fwhmY) / 2

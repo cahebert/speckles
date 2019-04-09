@@ -136,13 +136,14 @@ def estimateBackground(image, maskSize, maskCenter=True, plot=False, pScale=.01,
     # return standard deviation of this clipped background
     return clippedCenteredStd
 
-def imageCOM(img):
+def imageCOM(image):
     '''
     Find the center of mass of given image.
     Returns:
     ========
     Tuple of ints corrsponding to the indices of the center of mass
     '''
+    img = np.copy(image)- np.min(image)
     indices = np.linspace(0, img.shape[0]-1, img.shape[0])
     comX = np.dot(img.sum(axis=1), indices) / img.sum()
     comY = np.dot(img.sum(axis=0), indices) / img.sum()

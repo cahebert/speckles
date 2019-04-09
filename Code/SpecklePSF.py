@@ -57,7 +57,7 @@ class SpeckleSeries():
             aduConvertWithGain = pickle.load(file)
         self.gain = dict(
             (k.split('_')[1], v) for k, v in dict(aduConvertWithGain).items()
-            if 'fileNumber' in k)
+            if fileNumber in k)
         self.background = {'a': 33.7, 'b': 33.7} #backgrounds[str(fileNumber)]
         if pScale == 0.2:
             # divide background std by sqrt number of subpixels

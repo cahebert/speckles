@@ -4,25 +4,26 @@ import matplotlib.pyplot as plt
 import galsim
 import pandas as pd
 from lmfit import Minimizer, Parameters
+import pickle
 
 # basedir = '/Users/clairealice/Documents/Research/Burchat/SpeckleAnalysis/'
 
-gains = {'025': {'a': 14.9, 'b': 12.8}, '234': {'a': 11.21, 'b': 11.21},
-         '258': {'a': 11.21, 'b': 11.21}, '484': {'a': 14.9, 'b': 12.8},
-         '663': {'a': 2.56, 'b': 11.21}, '693': {'a': 12.8, 'b': 12.8},
-         '809': {'a': 11.21, 'b': 12.8}, '1039': {'a': 2.03, 'b': 2.56},
-         '1262': {'a': 11.21, 'b': 11.21}}
+# gains = {'025': {'a': 14.9, 'b': 12.8}, '234': {'a': 11.21, 'b': 11.21},
+#          '258': {'a': 11.21, 'b': 11.21}, '484': {'a': 14.9, 'b': 12.8},
+#          '663': {'a': 2.56, 'b': 11.21}, '693': {'a': 12.8, 'b': 12.8},
+#          '809': {'a': 11.21, 'b': 12.8}, '1039': {'a': 2.03, 'b': 2.56},
+#          '1262': {'a': 11.21, 'b': 11.21}}
 # '1237': {'a': 32.96,'b': 265.83}
 
-backgrounds = {'025': {'a': 30.85, 'b': 53.57},
-               '234': {'a': 42.74, 'b': 139.74},
-               '258': {'a': 69.39, 'b': 144.92},
-               '484': {'a': 33.65, 'b': 61.42},
-               '663': {'a': 32.13, 'b': 88.25},
-               '693': {'a': 73.12, 'b': 81.39},
-               '809': {'a': 39.08, 'b': 59.07},
-               '1039': {'a': 26.04, 'b': 99.80},
-               '1262': {'a': 84.10, 'b': 140.63}}
+# backgrounds = {'025': {'a': 30.85, 'b': 53.57},
+#                '234': {'a': 42.74, 'b': 139.74},
+#                '258': {'a': 69.39, 'b': 144.92},
+#                '484': {'a': 33.65, 'b': 61.42},
+#                '663': {'a': 32.13, 'b': 88.25},
+#                '693': {'a': 73.12, 'b': 81.39},
+#                '809': {'a': 39.08, 'b': 59.07},
+#                '1039': {'a': 26.04, 'b': 99.80},
+#                '1262': {'a': 84.10, 'b': 140.63}}
 # '1237': {'a': 32.96,'b': 265.83}
 
 
@@ -52,8 +53,12 @@ class SpeckleSeries():
         self.numBin = numBin
 
         # gain and background dictionaries for a and b filters
-        self.gain = gains[str(fileNumber)]
-        self.background = backgrounds[str(fileNumber)]
+        with open('./eConversionWithGain.p', 'rb') as file:
+            aduConvertWithGain = pickle.load(file)
+        self.gain = dict(
+            (k.split('_')[1], v) for k, v in dict(aduConvertWithGain).items()
+            if 'fileNumber' in k)
+        self.background = {'a': 33.7, 'b': 33.7} #backgrounds[str(fileNumber)]
         if pScale == 0.2:
             # divide background std by sqrt number of subpixels
             self.background.update((k, v / 18)

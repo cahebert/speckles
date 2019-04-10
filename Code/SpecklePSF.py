@@ -38,7 +38,7 @@ class SpeckleSeries():
     '''
 
     def __init__(self, fileNumber, source, baseDir,
-                 pScale=0.01, numBin=None, fitPts=11):
+                 pScale=0.01, numBin=None, fitPts=15):
         # Define filenames for a and b fPlters according to data or simulation.
         if source == 'data':
             self.aFile = f'rawSpeckles/img_a_{fileNumber}.fits'
@@ -71,9 +71,9 @@ class SpeckleSeries():
 
         self.tickLabels = [0, .7, 1.4, 2.1, 2.8]
 
-        self.loadMinimalExposures()
+        self.loadMinimalExposures(fitPts)
 
-    def loadMinimalExposures(self, fitPts=11):
+    def loadMinimalExposures(self, fitPts=15):
         '''
         Try and open .fits files of cumulative/binned PSFs for both a+b filters
         If those don't exist, run adding/binning function on instantaneous PSFs
@@ -90,8 +90,8 @@ class SpeckleSeries():
             bFilename += '_LSSTpix'
 
         if self.numBin is None:
-            aFilename += '_cumulative_11.fits'
-            bFilename += '_cumulative_11.fits'
+            aFilename += '_cumulative_15.fits'
+            bFilename += '_cumulative_15.fits'
 
             # find indices of the images we'll want to fit later
             # take images that double the number of exposures
@@ -204,7 +204,7 @@ class SpeckleSeries():
                 ahdulist.close()
                 bhdulist.close()
 
-    def fitExposures(self, fitPts=11):
+    def fitExposures(self, fitPts=15):
         '''
         Fit object data (specify binned/accumulated PSFs) to Kolmogorov profile
         Saves the best fit parameters in a dataframe.
@@ -446,9 +446,9 @@ def accumulateExposures(sequence, pScale, indices=None, numBin=None):
     '''
     N = len(sequence)
     if numBin is None:
-        psf = spatialBinToLSST(sequence[0].astype(np.float32))
+        psf = sequence[0].astype(np.float32)
         if pScale == 0.2:
-            accumulatedPSF = [psf]
+            accumulatedPSF = [spatialBinToLSST(psf)]
         else:
             accumulatedPSF = [np.copy(psf)]
 

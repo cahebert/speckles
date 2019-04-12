@@ -260,6 +260,7 @@ def imageKolmogorov(P, shape):
 
 def subtractBackground(imgSeries):
     for img in imgSeries:
+#         img = imgSeries[i]
         nx, ny = [int(np.ceil(i/50)) for i in img.shape]
         mask = makeMask(img, (nx, ny))
         maskedExposure = img * mask
@@ -288,7 +289,7 @@ def accumulateExposures(sequence, pScale, subtract=True, indices=None, numBin=No
                 accumulatedPSF.append(np.copy(psf))
 
             if subtract:
-                accumulatedPSF = subtractBackground(accumulatedPSF)
+                subtractBackground(accumulatedPSF)
 
             return [accumulatedPSF[i] / (i + 1) for i in range(N)]
 
@@ -303,7 +304,7 @@ def accumulateExposures(sequence, pScale, subtract=True, indices=None, numBin=No
                     accumulatedPSF.append(np.copy(psf) / exposure)
             
             if subtract:
-                accumulatedPSF = subtractBackground(accumulatedPSF)
+                subtractBackground(accumulatedPSF)
 
             return accumulatedPSF
 
@@ -317,6 +318,6 @@ def accumulateExposures(sequence, pScale, subtract=True, indices=None, numBin=No
             for n in range(numBin)]
 
         if subtract:
-            accumulatedPSF = subtractBackground(accumulatedPSF)
+            subtractBackground(accumulatedPSF)
         
         return binnedPSF

@@ -180,3 +180,143 @@ def imageFWHM(img, x, y):
     
     # return averaged FWHM
     return (fwhmX + fwhmY) / 2
+
+def spatialBinToLSST(image, n=14):
+    '''
+    Given an image, return a spatially binned image size 14x14
+    TO DO?
+    - potentially have functionality for an image that isn't 256x256
+    '''
+    image = image[2:-2, 2:-2]
+    newIm = np.empty((n, n))
+    for i in range(n):
+        for j in range(n):
+            newIm[i, j] = image[18 * i:18 * (i + 1), 18 * j:18 * (j + 1)].sum()
+    return newIm
+
+
+def fitSingleExposure(image, pScale, sBack, nExp):
+    '''
+    Given an image, find the best fit Kolmogorov profile parameters.
+    Takes in:
+    - pScale: pixel scale of the image
+    - sBack: the background count fluctuation
+    - nExp: the number of exposures (e.g. !=1 for accumulated exposures)
+    Returns:
+    - lmfit minimizer result
+    '''
+    # to avoid weird data type bug with lmfit:
+    if image.dtype != '>f4':
+        image = np.array(image, dtype='>f4')
+
+    # Initialize Parameters object
+    params = Parameters()
+    params.add('p_scale', value=pScale, vary=False)  # pixel scale is fixed
+    params.add('g1', value=.02, min=-.6, max=.6)
+    params.add('g2', value=.02, min=-.6, max=.6)
+    params.add('hlr', value=.4, min=0., max=.8)
+    # find max and set as first centroid guess
+    m = np.max(image)
+    (y, x) = np.where(image == m)
+    # HERE is where to change the parameter bounds/guesses
+    params.add('offsetX', value=x.mean() - np.shape(image)[0] / 2)
+    # , min=x.mean() - 200, max=x.mean() - 20)
+    params.add('offsetY', value=y.mean() - np.shape(image)[0] / 2)
+    # , min=y.mean() - 200, max=y.mean() - 20)
+
+    # use sum of pixels without minimum value as first flux guess
+    dataMin = np.min(image)
+    dataTotal = (
+        np.sum(image) - dataMin * np.shape(image)[0] * np.shape(image)[1])
+    params.add(
+        'flux', value=dataTotal)#, min=dataTotal / 100, max=dataTotal * 5)
+    params.add('background', value=dataMin)
+    # , min=dataMin - 500, max=dataMin + 800)
+
+    def chiSqrKolmogorov(p):
+        kIm = imageKolmogorov(p, image.shape)
+        err = sBack**2 + abs(image - p['background'])
+        return np.sqrt(nExp / err) * (kIm - image)
+
+    return Minimizer(chiSqrKolmogorov, params).minimize(method='leastsq')
+
+
+def imageKolmogorov(P, shape):
+    """
+    Creates an image of a Kolmogorov PSF given Parameters class P, which holds:
+        - the half light radius (in arcsec)
+        - shear ellipticities g1 and g2
+        - pixel scale
+        - offset in x and y from image center
+        - flux
+        - background level
+    """
+    k = galsim.Kolmogorov(half_light_radius=P['hlr'], flux=P['flux'])
+    k = k.shear(g1=P['g1'], g2=P['g2'])
+    kIm = k.drawImage(
+        nx=shape[1], ny=shape[0], scale=P['p_scale'],
+        offset=(P['offsetX'], P['offsetY'])).array
+    return kIm + P['background']
+
+def subtractBackground(imgSeries):
+    for img in imgSeries:
+        nx, ny = [int(np.ceil(i/50)) for i in img.shape]
+        mask = makeMask(img, (nx, ny))
+        maskedExposure = img * mask
+        background = maskedExposure[maskedExposure!=0].flatten()
+        img -= background.mean()
+        
+def accumulateExposures(sequence, pScale, subtract=True, indices=None, numBin=None):
+    '''
+    Accumulates exposures (or bins data) for given sequence, returns result
+    '''
+    N = len(sequence)
+    if numBin is None:
+        psf = sequence[0].astype(np.float32)
+        if pScale == 0.2:
+            accumulatedPSF = [spatialBinToLSST(psf)]
+        else:
+            accumulatedPSF = [np.copy(psf)]
+
+        if indices is None:
+            for exposure in range(1, N):
+                if pScale == 0.2:
+                    temp = spatialBinToLSST(sequence[exposure])
+                    psf += temp
+                else:
+                    psf += sequence[exposure].astype(np.float32)
+                accumulatedPSF.append(np.copy(psf))
+
+            if subtract:
+                accumulatedPSF = subtractBackground(accumulatedPSF)
+
+            return [accumulatedPSF[i] / (i + 1) for i in range(N)]
+
+        # if a list of indices is given, return accumulated PSFs for those only
+        else:
+            # this is defniitely not optimal, should be reusing sum as I go
+            for exposure in indices[1:]:
+                psf = sequence[0:exposure].sum(axis=0).astype(np.float32)
+                if pScale == 0.2:
+                    accumulatedPSF.append(spatialBinToLSST(psf) / exposure)
+                else:
+                    accumulatedPSF.append(np.copy(psf) / exposure)
+            
+            if subtract:
+                accumulatedPSF = subtractBackground(accumulatedPSF)
+
+            return accumulatedPSF
+
+    else:
+        assert N % float(numBin) == 0, \
+            'Number of requested bins does not divide length of dataset'
+        binSize = N / numBin
+
+        binnedPSF = [
+            np.sum(sequence[n * binSize:(n + 1) * binSize], axis=0) / binSize
+            for n in range(numBin)]
+
+        if subtract:
+            accumulatedPSF = subtractBackground(accumulatedPSF)
+        
+        return binnedPSF

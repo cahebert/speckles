@@ -143,7 +143,8 @@ def imageCOM(image):
     ========
     Tuple of ints corrsponding to the indices of the center of mass
     '''
-    img = np.copy(image)- np.min(image)
+    img = np.copy(image)
+    subtractBackground([img])
     indices = np.linspace(0, img.shape[0]-1, img.shape[0])
     comX = np.dot(img.sum(axis=1), indices) / img.sum()
     comY = np.dot(img.sum(axis=0), indices) / img.sum()
@@ -158,10 +159,11 @@ def imageFWHM(img, x, y):
     ========
     FWHM of image, averaged between x and y slices.
     '''
+    img = np.copy(img)
+    subtractBackground([img])
+
     # take a slice through x
-    sliceX = np.copy(img[x,:])
-    # subtract the minimum
-    sliceX -= np.min(sliceX)
+    sliceX = img[x,:]
     # find what's above/below the half max
     tempX = sliceX - sliceX.max()/2
     
@@ -171,8 +173,7 @@ def imageFWHM(img, x, y):
     fwhmX = abs(np.where(dX>0)[0][-1] - np.where(dX<0)[0][0])
     
     # repeat for y direction
-    sliceY = np.copy(img[:,y])
-    sliceY -= np.min(sliceY)
+    sliceY = img[:,y]
     tempY = sliceY - sliceY.max()/2
     
     dY = np.sign(tempY[:-1]) - np.sign(tempY[1:])

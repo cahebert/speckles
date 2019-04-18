@@ -195,8 +195,24 @@ def spatialBinToLSST(image, n=14):
             newIm[i, j] = image[18 * i:18 * (i + 1), 18 * j:18 * (j + 1)].sum()
     return newIm
 
+def singleExposureHSM(img):
+    comx, comy = imageCOM(img)
+    fwhm = imageFWHM(img, comx, comy)
+    guestimateSigA = fwhm / 2.355
 
-def fitSingleExposure(image, pScale, sBack, nExp):
+    # make GalSim image of the exposure
+    new_params = galsim.hsm.HSMParams(max_amoment=5.0e5, max_ashift=75)
+    galImage = galsim.Image(img, xmin=0, ymin=0)
+    # run HSM adaptive moments with initial sigma guess
+    speckleMoments = galsim.hsm.FindAdaptiveMom(galImage, hsmparams=new_params,
+                                                guess_sig=guestimateSig,
+                                                guess_centroid=galsim.PositionD(comx, comy))
+
+    # tuple of results
+    return speckleMoments.observed_shape.g1, speckleMoments.observed_shape.g2, speckleMoments.moments_sigma
+
+
+def singleExposureKolmogorov(image, pScale, sBack, nExp):
     '''
     Given an image, find the best fit Kolmogorov profile parameters.
     Takes in:

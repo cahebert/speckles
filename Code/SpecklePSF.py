@@ -27,6 +27,7 @@ import helperFunctions as helper
 #                '1262': {'a': 84.10, 'b': 140.63}}
 # '1237': {'a': 32.96,'b': 265.83}
 
+hlrSigmaconversion = .01270655
 
 class SpeckleSeries():
     '''
@@ -75,7 +76,7 @@ class SpeckleSeries():
 
         self.loadMinimalExposures(fitPts)
 
-    def loadMinimalExposures(self, fitPts=15):
+    def loadMinimalExposures(self, fitPts=15, save=False):
         '''
         Try and open .fits files of cumulative/binned PSFs for both a+b filters
         If those don't exist, run adding/binning function on instantaneous PSFs
@@ -84,16 +85,16 @@ class SpeckleSeries():
         add check: if pScale==0.2 the loaded data should be 14/14
         '''
         # define filenames according to choice of accumulated/binned PSFs
-        aFilename = self.aFile.split('.')[0]
-        bFilename = self.bFile.split('.')[0]
+        aFilename = 'rawSpeckles/accumulated/' + self.aFile.split('.')[0].split('/')[-1]
+        bFilename = 'rawSpeckles/accumulated/' + self.bFile.split('.')[0].split('/')[-1]
 
         if self.pScale == 0.2:
             aFilename += '_LSSTpix'
             bFilename += '_LSSTpix'
 
         if self.numBin is None:
-            aFilename += '_cumulative_15.fits'
-            bFilename += '_cumulative_15.fits'
+            aFilename += f'_cumulative_{fitPts}.fits'
+            bFilename += f'_cumulative_{fitPts}.fits'
 
             # find indices of the images we'll want to fit later
             # take images that double the number of exposures
@@ -147,6 +148,14 @@ class SpeckleSeries():
                                                        self.pScale, 
                                                        subtract=self.subtract,
                                                        numBin=self.numBin)
+
+            # save sequences to file
+            hduA = fits.PrimaryHDU(self.aSeq)
+            hduB = fits.PrimaryHDU(self.bSeq)
+
+            hduA.writeto(self.baseDir + aFilename)
+            hduB.writeto(self.baseDir + bFilename)
+                
         else:
             # if no exception raised, use existing processed data:
             if self.numBin is None:
@@ -166,8 +175,8 @@ class SpeckleSeries():
         numBin is None for accumulated PSF, and the number of bins otherwise
         '''
         # define filenames according to choice of accumulated/binned PSFs
-        aFilename = self.aFile.split('.')[0]
-        bFilename = self.bFile.split('.')[0]
+        aFilename = 'rawSpeckles/accumulated/' + self.aFile.split('.')[0].split('/')[-1]
+        bFilename = 'rawSpeckles/accumulated/' + self.bFile.split('.')[0].split('/')[-1]
 
         if self.pScale == 0.2:
             aFilename += '_LSSTpix'
@@ -228,15 +237,76 @@ class SpeckleSeries():
                 ahdulist.close()
                 bhdulist.close()
 
-    def fitExposures(self, fitPts=15):
+    def fitExposures(self, fitMethod='hsm', fitPts=15, 
+                     maxIters=400, max_ashift=75, max_amoment=5.0e5, 
+                     savePath=None):
+        '''
+        Fit loaded exposures to extract PSF parameters. Call appropriate class function
+        based on fitMethod. Save if desired.
+        '''
+        if fitMethod == 'hsm':
+            self.estimateMomentsHSM(fitPts=fitPts, 
+                                    maxIters=maxIters, 
+                                    max_ashift=max_ashift, 
+                                    max_amoment=max_amoment)
+        
+        elif fitMethod == 'kolmogorov':
+            self.kolmogorovFitExposures()
+        
+        else:
+            print('Please enter valid method: choose hsm or kolmogorov.')
+        
+        if savePath is not None:
+            # pass fitMethod to be included in file name.
+            self.saveFitParams(fitMethod, path=savePath)
+        else:
+            print('beware, your fits have not been saved to file')
+            
+    def estimateMomentsHSM(self, maxIters=400, max_ashift=75, max_amoment=5.0e5, fitPts=15):
+        '''
+        Estimate the moments of the PSF images using HSM.
+        TO DO:
+        - fit third moment of PSF as well?
+        '''
+        # length of sequence to fit
+        N = len(self.aSeq)
+
+        aFitResults = []
+        bFitResults = []
+
+        for i in range(N):
+            # fit the a filter image
+            aParams = helper.singleExposureHSM(self.aSeq[i], 
+                                               maxIters = maxIters, 
+                                               max_ashift = max_ashift, 
+                                               max_amoment = max_amoment)
+
+            # put results in a dataframe -> append to sequence list
+            aResDict = {'g1': aParams[0], 'g2': aParams[1], 'hlr': aParams[2] * hlrSigmaconversion}
+            aFitResults.append(pd.DataFrame(data=aResDict, index=[0]))
+
+            # fit the b filter image
+            bParams = helper.singleExposureHSM(self.bSeq[i], 
+                                               maxIters = maxIters, 
+                                               max_ashift = max_ashift, 
+                                               max_amoment = max_amoment)
+
+            # put results in a dataframe -> append to sequence list
+            bResDict = {'g1': bParams[0], 'g2': bParams[1], 'hlr': bParams[2] * hlrSigmaconversion}
+            bFitResults.append(pd.DataFrame(data=bResDict, index=[0]))
+
+
+        # concatenate all the dataframes together into one for each filter
+        self.aFits = pd.concat(aFitResults, ignore_index=True)
+        self.bFits = pd.concat(bFitResults, ignore_index=True)
+            
+    def kolmogorovFitExposures(self, fitPts=15):
         '''
         Fit object data (specify binned/accumulated PSFs) to Kolmogorov profile
         Saves the best fit parameters in a dataframe.
         TO DO:
         - save the fits!
-        - try different fit methods: moments?
         - implement possiblitiy of a Von Karman fit
-        - fit third moment of PSF as well!
         '''
         # length of sequence to fit
         N = len(self.aSeq)
@@ -263,9 +333,9 @@ class SpeckleSeries():
                 N_exp = self.indices[i] + 1
 
             # fit the a filter image
-            aParamRes = helper.fitSingleExposure(self.aSeq[i] * self.gain['a'],
-                                                 self.pScale, self.background['a'],
-                                                 nExp=N_exp)
+            aParamRes = helper.singleExposureKolmogorov(self.aSeq[i] * self.gain['a'],
+                                                        self.pScale, self.background['a'],
+                                                        nExp=N_exp)
             aParam = aParamRes.params
             # make sure the fit converged well
             try:
@@ -290,9 +360,9 @@ class SpeckleSeries():
             aFitResults.append(pd.DataFrame(data=aResDict, index=[0]))
 
             # fit the b filter image
-            bParamRes = helper.fitSingleExposure(self.bSeq[i] * self.gain['b'],
-                                          self.pScale, self.background['b'],
-                                          nExp=N_exp)
+            bParamRes = helper.singleExposureKolmogorov(self.bSeq[i] * self.gain['b'],
+                                                        self.pScale, self.background['b'],
+                                                        nExp=N_exp)
             bParam = bParamRes.params
             # make sure the fit converged well
             try:
@@ -327,6 +397,7 @@ class SpeckleSeries():
                      saveName=None):
         '''
         Plot data, model, and residual images.
+        ONLY call this if data has been fit to Kolmogorov, otherwise class won't have models to plot
         TO DO:
         - not sure if this way of plotting colorbars will work, not sure how to
           add them to each axis. Can even make on cbar for all -- not sure
@@ -396,7 +467,7 @@ class SpeckleSeries():
 
         plt.show()
 
-    def saveFitParams(self, path=None):
+    def saveFitParams(self, fitMethod, path=None):
         '''
         Save pandas dataFrames containing fit parameters to pickke.
         If specified, the save to directory located at 'path', or
@@ -406,8 +477,8 @@ class SpeckleSeries():
         if path is None:
             path = self.baseDir + 'fit_pickles/'
 
-        saveA = path + '/' + self.aFile.split('.')[0].split('/')[-1]
-        saveB = path + '/' + self.bFile.split('.')[0].split('/')[-1]
+        saveA = path + '/' + fitMethod + '_' + self.aFile.split('.')[0].split('/')[-1]
+        saveB = path + '/' + fitMethod + '_' + self.bFile.split('.')[0].split('/')[-1]
 
         if self.pScale == 0.2:
             saveA += '_LSSTpix'
@@ -433,7 +504,7 @@ class SpeckleSeries():
             to save them
         '''
         if path is None:
-            path = self.baseDir + 'accumulatedSpeckles/'
+            path = self.baseDir + 'accumulated/'
 
         saveA = path + '/' + self.aFile.split('.')[0].split('/')[-1]
         saveB = path + '/' + self.bFile.split('.')[0].split('/')[-1]
@@ -448,6 +519,7 @@ class SpeckleSeries():
 
             saveA += '_cumulative.fits'
             saveB += '_cumulative.fits'
+
         else:
             hduA = fits.PrimaryHDU(self.aBinned)
             hduB = fits.PrimaryHDU(self.bBinned)

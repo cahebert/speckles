@@ -1,5 +1,6 @@
 import numpy as np
 from matplotlib import pyplot as plt
+import galsim
 
 def makeMask(image, maskSize, maskCenter=False):
     # define a mask
@@ -169,15 +170,40 @@ def imageFWHM(img, x, y):
     
     # find where we change from above to below
     dX = np.sign(tempX[:-1]) - np.sign(tempX[1:])
-    # difference is FWHM
-    fwhmX = abs(np.where(dX>0)[0][-1] - np.where(dX<0)[0][0])
+    right = np.where(dX>0)[0]
+    left = np.where(dX<0)[0]
+    
+    # check for the derivative actually working
+    if len(right) == 0:
+        if len(left) != 0:
+            # if right side doesn't cross zero, make fwhm twice the left to COM distance
+            fwhmX = 2 * abs(left[0] - y)
+    elif len(left) == 0:
+        if len(right) != 0:
+            # if left side doesn't cross zero, make fwhm twice the right to COM distance
+            fwhmX = 2 * abs(right[-1] - y)
+    else:
+        # if neither side is zero, difference is FWHM
+        fwhmX = abs(right[-1] - left[0])
     
     # repeat for y direction
     sliceY = img[:,y]
     tempY = sliceY - sliceY.max()/2
     
     dY = np.sign(tempY[:-1]) - np.sign(tempY[1:])
-    fwhmY = abs(np.where(dY<0)[0][0] - np.where(dY>0)[0][0])
+    right = np.where(dY>0)[0]
+    left = np.where(dY<0)[0]
+    if len(right) == 0:
+        if len(left) != 0:
+            # if right side doesn't cross zero, make fwhm twice the left to COM distance
+            fwhmY = 2 * abs(left[0] - x)
+    elif len(left) == 0:
+        if len(right) != 0:
+            # if left side doesn't cross zero, make fwhm twice the right to COM distance
+            fwhmY = 2 * abs(right[-1] - x)
+    else:
+        # if neither side is zero, difference is FWHM
+        fwhmY = abs(right[-1] - left[0])
     
     # return averaged FWHM
     return (fwhmX + fwhmY) / 2
@@ -195,13 +221,15 @@ def spatialBinToLSST(image, n=14):
             newIm[i, j] = image[18 * i:18 * (i + 1), 18 * j:18 * (j + 1)].sum()
     return newIm
 
-def singleExposureHSM(img):
+def singleExposureHSM(img, maxIters=400, max_ashift=75, max_amoment=5.0e5):
     comx, comy = imageCOM(img)
     fwhm = imageFWHM(img, comx, comy)
-    guestimateSigA = fwhm / 2.355
+    guestimateSig = fwhm / 2.355
 
     # make GalSim image of the exposure
-    new_params = galsim.hsm.HSMParams(max_amoment=5.0e5, max_ashift=75)
+    new_params = galsim.hsm.HSMParams(max_amoment=max_amoment, 
+                                      max_ashift=max_ashift,
+                                      max_mom2_iter=maxIters)
     galImage = galsim.Image(img, xmin=0, ymin=0)
     # run HSM adaptive moments with initial sigma guess
     speckleMoments = galsim.hsm.FindAdaptiveMom(galImage, hsmparams=new_params,
@@ -277,9 +305,8 @@ def imageKolmogorov(P, shape):
 
 def subtractBackground(imgSeries):
     for img in imgSeries:
-#         img = imgSeries[i]
         nx, ny = [int(np.ceil(i/50)) for i in img.shape]
-        mask = makeMask(img, (nx, ny))
+        mask = makeMask(img, (nx, ny), maskCenter=True)
         maskedExposure = img * mask
         background = maskedExposure[maskedExposure!=0].flatten()
         img -= background.mean()

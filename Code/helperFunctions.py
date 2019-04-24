@@ -339,9 +339,9 @@ def accumulateExposures(sequence, pScale, subtract=True, indices=None, numBin=No
 
         # if a list of indices is given, return accumulated PSFs for those only
         else:
-            # this is defniitely not optimal, should be reusing sum as I go
+            # this is definitely not optimal, should be reusing sum as I go
             for exposure in indices[1:]:
-                psf = sequence[0:exposure].sum(axis=0).astype(np.float32)
+                psf = sequence[0:exposure + 1].sum(axis=0).astype(np.float32)
                 if pScale == 0.2:
                     accumulatedPSF.append(spatialBinToLSST(psf) / exposure)
                 else:

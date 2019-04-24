@@ -237,7 +237,8 @@ def singleExposureHSM(img, maxIters=400, max_ashift=75, max_amoment=5.0e5):
                                                 guess_centroid=galsim.PositionD(comx, comy))
 
     # tuple of results
-    return speckleMoments.observed_shape.g1, speckleMoments.observed_shape.g2, speckleMoments.moments_sigma, specklerMoments.moments_centroid
+    return speckleMoments.observed_shape.g1, speckleMoments.observed_shape.g2, \
+            speckleMoments.moments_sigma, speckleMoments.moments_centroid
 
 
 def singleExposureKolmogorov(image, pScale, sBack, nExp):

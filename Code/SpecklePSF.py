@@ -282,7 +282,8 @@ class SpeckleSeries():
                                                max_amoment = max_amoment)
 
             # put results in a dataframe -> append to sequence list
-            aResDict = {'g1': aParams[0], 'g2': aParams[1], 'hlr': aParams[2] * hlrSigmaconversion}
+            aResDict = {'g1': aParams[0], 'g2': aParams[1], 'hlr': aParams[2] * hlrSigmaconversion,
+                        'x': aParams[3].x, 'y': aParams[3].y}
             aFitResults.append(pd.DataFrame(data=aResDict, index=[0]))
 
             # fit the b filter image
@@ -292,7 +293,8 @@ class SpeckleSeries():
                                                max_amoment = max_amoment)
 
             # put results in a dataframe -> append to sequence list
-            bResDict = {'g1': bParams[0], 'g2': bParams[1], 'hlr': bParams[2] * hlrSigmaconversion}
+            bResDict = {'g1': bParams[0], 'g2': bParams[1], 'hlr': bParams[2] * hlrSigmaconversion,
+                        'x': bParams[3].x, 'y': bParams[3].y}
             bFitResults.append(pd.DataFrame(data=bResDict, index=[0]))
 
 

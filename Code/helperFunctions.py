@@ -2,7 +2,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import galsim
 
-def makeMask(image, maskSize, maskCenter=False):
+def makeMask(image, maskSize, maskCenter=False, center='new'):
     # define a mask
     nx, ny = np.shape(image)
     mask = np.zeros((nx, ny))
@@ -15,24 +15,46 @@ def makeMask(image, maskSize, maskCenter=False):
     else:
         maskCenter = (0, 0)
         
-    # make sure centered mask is within the image limits
-    if maskCenter[0] + maskSize[0] >= 0:
-        xlEdge = int(maskCenter[0] + maskSize[0])
-    else: 
-        xlEdge = 0
-    if nx - maskSize[0] + maskCenter[0] <= nx:
-        xrEdge = int(nx - maskSize[0] + maskCenter[0])
-    else: 
-        xrEdge = nx   
-    
-    if maskCenter[1] + maskSize[1] >= 0:
-        ylEdge = int(maskCenter[1] + maskSize[1])
-    else: 
-        ylEdge = 0
-    if nx - maskSize[1] + maskCenter[1] <= ny:
-        yuEdge = int(ny - maskSize[1] + maskCenter[1])
-    else: 
-        yuEdge = ny
+    if center == 'new':
+        if maskCenter[0] > maskSize[0]:
+            xlEdge = maskSize[0]
+            xrEdge = nx
+        elif maskCenter[0] < maskSize[0]:
+            xlEdge = 0
+            xrEdge = nx - maskSize[0]
+        else:
+            xlEdge = int(maskCenter[0] + maskSize[0])
+            xrEdge = int(nx - maskSize[0] + maskCenter[0])
+
+        if maskCenter[1] > maskSize[1]:
+            ylEdge = maskSize[1]
+            yuEdge = ny
+        elif maskCenter[1] < maskSize[1]:
+            ylEdge = 1
+            yuEdge = ny - maskSize[1]
+        else:
+            ylEdge = int(maskCenter[1] + maskSize[1])
+            yuEdge = int(ny - maskSize[1] + maskCenter[1])
+
+    if center == 'old':
+            # make sure centered mask is within the image limits
+        if maskCenter[0] + maskSize[0] >= 0:
+            xlEdge = int(maskCenter[0] + maskSize[0])
+        else: 
+            xlEdge = 0
+        if nx - maskSize[0] + maskCenter[0] <= nx:
+            xrEdge = int(nx - maskSize[0] + maskCenter[0])
+        else: 
+            xrEdge = nx   
+
+        if maskCenter[1] + maskSize[1] >= 0:
+            ylEdge = int(maskCenter[1] + maskSize[1])
+        else: 
+            ylEdge = 0
+        if nx - maskSize[1] + maskCenter[1] <= ny:
+            yuEdge = int(ny - maskSize[1] + maskCenter[1])
+        else: 
+            yuEdge = ny
 
     # define the mask
     mask[:xlEdge, :] = 1
@@ -99,57 +121,61 @@ def demonstrateCenteringMask(image, maskSize, plot=False, pScale=.01, nExp=1):
         plt.show()
 
         
-def estimateBackground(image, maskSize, maskCenter=True, plot=False, pScale=.01, nExp=1):
-    '''
-    Estimates the background of image.
-    Parameters:
-    ----------
-    ...
-    '''
-    # define centered mask
-    centeredMask = makeMask(image, maskSize, maskCenter=True)
-    if plot:
-        plt.imshow(centeredMask*image)
-        plt.title('centered mask')
-        plt.show()    
+# def estimateBackground(image, maskSize, maskCenter=True, plot=False, pScale=.01, nExp=1):
+#     '''
+#     Estimates the background of image.
+#     Parameters:
+#     ----------
+#     ...
+#     '''
+#     # define centered mask
+#     centeredMask = makeMask(image, maskSize, maskCenter=True)
+#     if plot:
+#         plt.imshow(centeredMask*image)
+#         plt.title('centered mask')
+#         plt.show()    
 
-    # apply to image, find std of centered background
-    centeredBack = (centeredMask*image).ravel()
-    centeredBack = centeredBack[centeredBack!=0]
-    centeredStd = np.std(centeredBack)
+#     # apply to image, find std of centered background
+#     centeredBack = (centeredMask*image).ravel()
+#     centeredBack = centeredBack[centeredBack!=0]
+#     centeredStd = np.std(centeredBack)
     
-    # do a 2 sigma clipping on the distribution of background pixels
-    twoSigma = np.mean(centeredBack) + 2 * centeredStd
-    clippedCenteredStd = np.std(centeredBack[centeredBack <= twoSigma])
+#     # do a 2 sigma clipping on the distribution of background pixels
+#     twoSigma = np.mean(centeredBack) + 2 * centeredStd
+#     clippedCenteredStd = np.std(centeredBack[centeredBack <= twoSigma])
     
-    if plot:
-        print(f'standard deviation, centered: {centeredStd:.2f}' +
-              f'\n2 sigma clipped standard deviation, centered: {clippedCenteredStd:.2f}')
-        bins = np.linspace(
-            int(min(centeredBack)), int(max(centeredBack)), 
-            int(max(centeredBack) - min(centeredBack)))
-        plt.hist(centeredBack, bins=bins)
-        plt.axvline(twoSigma, color='yellow')
-        plt.ylabel('counts', fontsize=12)
-        plt.xlabel('pixel intensity', fontsize=12)
-        plt.show()
+#     if plot:
+#         print(f'standard deviation, centered: {centeredStd:.2f}' +
+#               f'\n2 sigma clipped standard deviation, centered: {clippedCenteredStd:.2f}')
+#         bins = np.linspace(
+#             int(min(centeredBack)), int(max(centeredBack)), 
+#             int(max(centeredBack) - min(centeredBack)))
+#         plt.hist(centeredBack, bins=bins)
+#         plt.axvline(twoSigma, color='yellow')
+#         plt.ylabel('counts', fontsize=12)
+#         plt.xlabel('pixel intensity', fontsize=12)
+#         plt.show()
     
-    # return standard deviation of this clipped background
-    return clippedCenteredStd
+#     # return standard deviation of this clipped background
+#     return clippedCenteredStd
 
-def imageCOM(image):
+def imageCOM(image, expMask=None):
     '''
     Find the center of mass of given image.
     Returns:
     ========
-    Tuple of ints corrsponding to the indices of the center of mass
+    Tuple of ints corrsponding to the x, y indices of the center of mass
     '''
     img = np.copy(image)
-    subtractBackground([img])
-    indices = np.linspace(0, img.shape[0]-1, img.shape[0])
+    if expMask is not None:
+        # give 0 weight to masked pixels
+        img *= expMask
+    if abs(img.min()) > 100:
+        subtractBackground([img])
+    indices = np.linspace(0, img.shape[0] - 1, img.shape[0])
     comX = np.dot(img.sum(axis=1), indices) / img.sum()
     comY = np.dot(img.sum(axis=0), indices) / img.sum()
-    return int(np.rint(comX)), int(np.rint(comY))
+    return int(comX), int(comY)
 
 def imageFWHM(img, x, y):
     '''
@@ -221,10 +247,15 @@ def spatialBinToLSST(image, n=14):
             newIm[i, j] = image[18 * i:18 * (i + 1), 18 * j:18 * (j + 1)].sum()
     return newIm
 
-def singleExposureHSM(img, maxIters=400, max_ashift=75, max_amoment=5.0e5):
+def singleExposureHSM(img, expMask=None, subtract=True, maxIters=400, max_ashift=75, max_amoment=5.0e5):
+    if subtract:
+        img = np.copy(img)
+        expMaskDict = {0: expMask} if expMask is not None else None
+        subtractBackground([img], expMaskDict=expMaskDict)
     comx, comy = imageCOM(img)
     fwhm = imageFWHM(img, comx, comy)
     guestimateSig = fwhm / 2.355
+    badPix = 1 - expMask if expMask is not None else None
 
     # make GalSim image of the exposure
     new_params = galsim.hsm.HSMParams(max_amoment=max_amoment, 
@@ -233,6 +264,7 @@ def singleExposureHSM(img, maxIters=400, max_ashift=75, max_amoment=5.0e5):
     galImage = galsim.Image(img, xmin=0, ymin=0)
     # run HSM adaptive moments with initial sigma guess
     speckleMoments = galsim.hsm.FindAdaptiveMom(galImage, hsmparams=new_params,
+                                                badpix=badPix,
                                                 guess_sig=guestimateSig,
                                                 guess_centroid=galsim.PositionD(comx, comy))
 
@@ -241,100 +273,97 @@ def singleExposureHSM(img, maxIters=400, max_ashift=75, max_amoment=5.0e5):
             speckleMoments.moments_sigma, speckleMoments.moments_centroid
 
 
-def singleExposureKolmogorov(image, pScale, sBack, nExp):
+def subtractBackground(imgSeries, accumulated=False, expMaskDict=None, method='slice', center='new'):
     '''
-    Given an image, find the best fit Kolmogorov profile parameters.
-    Takes in:
-    - pScale: pixel scale of the image
-    - sBack: the background count fluctuation
-    - nExp: the number of exposures (e.g. !=1 for accumulated exposures)
-    Returns:
-    - lmfit minimizer result
+    Subtract a flat background from a given series of images. 
+    Input:
+    ======
+    imgSeries: list of images to be background subtracted
+    accumulated: optional, whether the images are sinlge exposures
+    expMaskDict: optional, dictionary of exposures with associated pixel masks
+    method: specify method for finding the background value. 
+            'slice' means finding edge slice with lowest variance, and 
+            'mask' is applying a mask based on the PSF position.
+    center: if using the 'mask' method, how do you center the mask and decide on edge values? 
+            'new' method centers mask but doesn't move the mask edges further than 10 pixels from the edge, 
+            'old' method moves it arbitrarily far.
+    Output:
+    =======
+    None. Modifies the input series imgSeries in place.
+    Notes:
+    ======
+    If passing just a single image in, key value in expMaskDisk must reflect the position of the image in the input sequence, not the original series. 
     '''
-    # to avoid weird data type bug with lmfit:
-    if image.dtype != '>f4':
-        image = np.array(image, dtype='>f4')
-
-    # Initialize Parameters object
-    params = Parameters()
-    params.add('p_scale', value=pScale, vary=False)  # pixel scale is fixed
-    params.add('g1', value=.02, min=-.6, max=.6)
-    params.add('g2', value=.02, min=-.6, max=.6)
-    params.add('hlr', value=.4, min=0., max=.8)
-    # find max and set as first centroid guess
-    m = np.max(image)
-    (y, x) = np.where(image == m)
-    # HERE is where to change the parameter bounds/guesses
-    params.add('offsetX', value=x.mean() - np.shape(image)[0] / 2)
-    # , min=x.mean() - 200, max=x.mean() - 20)
-    params.add('offsetY', value=y.mean() - np.shape(image)[0] / 2)
-    # , min=y.mean() - 200, max=y.mean() - 20)
-
-    # use sum of pixels without minimum value as first flux guess
-    dataMin = np.min(image)
-    dataTotal = (
-        np.sum(image) - dataMin * np.shape(image)[0] * np.shape(image)[1])
-    params.add(
-        'flux', value=dataTotal)#, min=dataTotal / 100, max=dataTotal * 5)
-    params.add('background', value=dataMin)
-    # , min=dataMin - 500, max=dataMin + 800)
-
-    def chiSqrKolmogorov(p):
-        kIm = imageKolmogorov(p, image.shape)
-        err = sBack**2 + abs(image - p['background'])
-        return np.sqrt(nExp / err) * (kIm - image)
-
-    return Minimizer(chiSqrKolmogorov, params).minimize(method='leastsq')
-
-
-def imageKolmogorov(P, shape):
-    """
-    Creates an image of a Kolmogorov PSF given Parameters class P, which holds:
-        - the half light radius (in arcsec)
-        - shear ellipticities g1 and g2
-        - pixel scale
-        - offset in x and y from image center
-        - flux
-        - background level
-    """
-    k = galsim.Kolmogorov(half_light_radius=P['hlr'], flux=P['flux'])
-    k = k.shear(g1=P['g1'], g2=P['g2'])
-    kIm = k.drawImage(
-        nx=shape[1], ny=shape[0], scale=P['p_scale'],
-        offset=(P['offsetX'], P['offsetY'])).array
-    return kIm + P['background']
-
-def subtractBackground(imgSeries):
-    for img in imgSeries:
-        nx, ny = [int(np.ceil(i/50)) for i in img.shape]
-        mask = makeMask(img, (nx, ny), maskCenter=True)
-        maskedExposure = img * mask
-        background = maskedExposure[maskedExposure!=0].flatten()
-        img -= background.mean()
+    if expMaskDict is not None:
+        # not accumulated: only flag the exposure in the dict
+        flag = list(expMaskDict.keys())[0]
+        assert len(list(expMaskDict.keys())) == 1,'Found more than one mask in dict. Beware: code is not built for this!'
+        pixelMask = expMaskDict[flag]
+    else: 
+        flag = None
         
-def accumulateExposures(sequence, pScale, subtract=True, indices=None, numBin=None):
+    for i in range(len(imgSeries)):
+        img = imgSeries[i]
+        
+        if method == 'mask':
+            nx, ny = [int(np.ceil(i/50)) for i in img.shape]
+            maskedExposure = np.copy(img)
+            if flag is not None and accumulated or i == flag:
+                maskedExposure *= pixelMask
+            mask = makeMask(maskedExposure, (nx, ny), maskCenter=True, center=center)
+            maskedExposure *= mask
+            
+            background = maskedExposure[maskedExposure!=0].flatten()
+            img -= background.mean()
+            
+        if method == 'slice':
+            nx, ny = img.shape
+            mask_size = 10
+            sideSlices = np.zeros((4, mask_size, 256))
+            if flag is not None and accumulated or i == flag:
+                maskedExposure = img * pixelMask
+                sideSlices[0] = maskedExposure[:mask_size, :]
+                sideSlices[1] = maskedExposure[nx - mask_size:nx, :]
+                sideSlices[2] = maskedExposure[:, :mask_size].T
+                sideSlices[3] = maskedExposure[:, ny - mask_size:ny].T
+                #don't include masked pixels in the variance!
+                minVariance = np.argmin([sideSlices[j][sideSlices[j]!=0].flatten().var() for j in range(4)])
+                                
+            else:
+                sideSlices[0] = img[:mask_size, :]
+                sideSlices[1] = img[nx - mask_size:nx, :]
+                sideSlices[2] = img[:, :mask_size].T
+                sideSlices[3] = img[:, ny - mask_size:ny].T
+                
+            minVariance = np.argmin(sideSlices.var(axis=(1,2)))
+            img -= np.mean(sideSlices[minVariance][sideSlices[minVariance]!=0])
+
+
+def accumulateExposures(sequence, pScale, expMaskDict=None, subtract=True, indices=None, numBin=None):
     '''
     Accumulates exposures (or bins data) for given sequence, returns result
     '''
     N = len(sequence)
+    sequence = np.copy(sequence)
+    
+    if subtract:
+        subtractBackground(sequence, expMaskDict=expMaskDict, accumulated=True)
+        
     if numBin is None:
-        psf = sequence[0].astype(np.float32)
+        psf = sequence[0].astype(np.float64)
         if pScale == 0.2:
             accumulatedPSF = [spatialBinToLSST(psf)]
         else:
             accumulatedPSF = [np.copy(psf)]
-
+                    
         if indices is None:
             for exposure in range(1, N):
                 if pScale == 0.2:
                     temp = spatialBinToLSST(sequence[exposure])
                     psf += temp
                 else:
-                    psf += sequence[exposure].astype(np.float32)
+                    psf += sequence[exposure].astype(np.float64)
                 accumulatedPSF.append(np.copy(psf))
-
-            if subtract:
-                subtractBackground(accumulatedPSF)
 
             return [accumulatedPSF[i] / (i + 1) for i in range(N)]
 
@@ -342,15 +371,12 @@ def accumulateExposures(sequence, pScale, subtract=True, indices=None, numBin=No
         else:
             # this is definitely not optimal, should be reusing sum as I go
             for exposure in indices[1:]:
-                psf = sequence[0:exposure + 1].sum(axis=0).astype(np.float32)
+                psf = sequence[0:exposure + 1].sum(axis=0).astype(np.float64)
                 if pScale == 0.2:
-                    accumulatedPSF.append(spatialBinToLSST(psf) / exposure)
+                    accumulatedPSF.append(spatialBinToLSST(psf) / (exposure+1))
                 else:
-                    accumulatedPSF.append(np.copy(psf) / exposure)
+                    accumulatedPSF.append(np.copy(psf) / (exposure+1))
             
-            if subtract:
-                subtractBackground(accumulatedPSF)
-
             return accumulatedPSF
 
     else:
@@ -361,8 +387,68 @@ def accumulateExposures(sequence, pScale, subtract=True, indices=None, numBin=No
         binnedPSF = [
             np.sum(sequence[n * binSize:(n + 1) * binSize], axis=0) / binSize
             for n in range(numBin)]
-
-        if subtract:
-            subtractBackground(accumulatedPSF)
         
         return binnedPSF
+
+# def singleExposureKolmogorov(image, pScale, sBack, nExp):
+#     '''
+#     Given an image, find the best fit Kolmogorov profile parameters.
+#     Takes in:
+#     - pScale: pixel scale of the image
+#     - sBack: the background count fluctuation
+#     - nExp: the number of exposures (e.g. !=1 for accumulated exposures)
+#     Returns:
+#     - lmfit minimizer result
+#     '''
+#     # to avoid weird data type bug with lmfit:
+#     if image.dtype != '>f4':
+#         image = np.array(image, dtype='>f4')
+
+#     # Initialize Parameters object
+#     params = Parameters()
+#     params.add('p_scale', value=pScale, vary=False)  # pixel scale is fixed
+#     params.add('g1', value=.02, min=-.6, max=.6)
+#     params.add('g2', value=.02, min=-.6, max=.6)
+#     params.add('hlr', value=.4, min=0., max=.8)
+#     # find max and set as first centroid guess
+#     m = np.max(image)
+#     (y, x) = np.where(image == m)
+#     # HERE is where to change the parameter bounds/guesses
+#     params.add('offsetX', value=x.mean() - np.shape(image)[0] / 2)
+#     # , min=x.mean() - 200, max=x.mean() - 20)
+#     params.add('offsetY', value=y.mean() - np.shape(image)[0] / 2)
+#     # , min=y.mean() - 200, max=y.mean() - 20)
+
+#     # use sum of pixels without minimum value as first flux guess
+#     dataMin = np.min(image)
+#     dataTotal = (
+#         np.sum(image) - dataMin * np.shape(image)[0] * np.shape(image)[1])
+#     params.add(
+#         'flux', value=dataTotal)#, min=dataTotal / 100, max=dataTotal * 5)
+#     params.add('background', value=dataMin)
+#     # , min=dataMin - 500, max=dataMin + 800)
+
+#     def chiSqrKolmogorov(p):
+#         kIm = imageKolmogorov(p, image.shape)
+#         err = sBack**2 + abs(image - p['background'])
+#         return np.sqrt(nExp / err) * (kIm - image)
+
+#     return Minimizer(chiSqrKolmogorov, params).minimize(method='leastsq')
+
+
+# def imageKolmogorov(P, shape):
+#     """
+#     Creates an image of a Kolmogorov PSF given Parameters class P, which holds:
+#         - the half light radius (in arcsec)
+#         - shear ellipticities g1 and g2
+#         - pixel scale
+#         - offset in x and y from image center
+#         - flux
+#         - background level
+#     """
+#     k = galsim.Kolmogorov(half_light_radius=P['hlr'], flux=P['flux'])
+#     k = k.shear(g1=P['g1'], g2=P['g2'])
+#     kIm = k.drawImage(
+#         nx=shape[1], ny=shape[0], scale=P['p_scale'],
+#         offset=(P['offsetX'], P['offsetY'])).array
+#     return kIm + P['background']

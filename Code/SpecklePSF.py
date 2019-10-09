@@ -56,17 +56,17 @@ class SpeckleSeries():
         self.subtract = subtract
 
         # pixel mask dictionary
-#         with open('./pixelMasks.p', 'rb') as file:
-#             maskDict = pickle.load(file)
-#             maskDict = dict(maskDict)
-#         if self.aFile.split('/')[-1] in maskDict.keys():
-#             self.aMask = maskDict[self.aFile.split('/')[-1]]
-#         else:
-        self.aMask = None
-#         if self.bFile.split('/')[-1] in maskDict.keys():
-#             self.bMask = maskDict[self.bFile.split('/')[-1]]
-#         else:
-        self.bMask = None
+        with open('./pixelMasks.p', 'rb') as file:
+            maskDict = pickle.load(file)
+            maskDict = dict(maskDict)
+        if self.aFile.split('/')[-1] in maskDict.keys():
+            self.aMask = maskDict[self.aFile.split('/')[-1]]
+        else:
+            self.aMask = None
+        if self.bFile.split('/')[-1] in maskDict.keys():
+            self.bMask = maskDict[self.bFile.split('/')[-1]]
+        else:
+            self.bMask = None
         
         # gain and background dictionaries for a and b filters
         with open('./eConversionWithGain.p', 'rb') as file:
@@ -137,9 +137,9 @@ class SpeckleSeries():
             b = bhdulist[0].data.astype(np.float64)
             bhdulist.close()
 
-            # if inst PSFs are raw data, flip b filter data to correct optics
+            # if inst PSFs are raw data, flip a filter data to correct optics
             if self.source == 'data':
-                b = np.fliplr(b)
+                a = a[:,:,::-1]
 
             # run the accumulation/binning and save to object
             if self.numBin is None:
@@ -185,75 +185,8 @@ class SpeckleSeries():
                 ahdulist.close()
                 bhdulist.close()
 
-#     def loadAllExposures(self):
-#         '''
-#         Try and open .fits files of cumulative/binned PSFs for both a+b filters
-#         If those don't exist, run adding/binning function on instantaneous PSFs
-#         numBin is None for accumulated PSF, and the number of bins otherwise
-#         '''
-#         # define filenames according to choice of accumulated/binned PSFs
-#         aFilename = 'rawSpeckles/accumulated/' + self.aFile.split('.')[0].split('/')[-1]
-#         bFilename = 'rawSpeckles/accumulated/' + self.bFile.split('.')[0].split('/')[-1]
 
-#         if self.pScale == 0.2:
-#             aFilename += '_LSSTpix'
-#             bFilename += '_LSSTpix'
-
-#         if self.numBin is None:
-#             aFilename += '_cumulative.fits'
-#             bFilename += '_cumulative.fits'
-#         else:
-#             aFilename += '_%ibins.fits' % self.bins
-#             bFilename += '_%ibins.fits' % self.bins
-
-#         # try opening said files - if they don't exist, process data
-#         # just one try statement bc they should always be created in pairs
-#         try:
-#             ahdulist = fits.open(self.baseDir + aFilename)
-#             bhdulist = fits.open(self.baseDir + bFilename)
-#         except FileNotFoundError:
-#             # exception: load the raw data
-#             ahdulist = fits.open(self.baseDir + self.aFile)
-#             a = ahdulist[0].data
-#             ahdulist.close()
-
-#             bhdulist = fits.open(self.baseDir + self.bFile)
-#             b = bhdulist[0].data
-#             bhdulist.close()
-
-#             # if inst PSFs are raw data, flip b filter data to correct optics
-#             if self.source == 'data':
-#                 b = np.fliplr(b)
-
-#             # run the accumulation/binning and save to object
-#             if self.numBin is None:
-#                 self.aAccumulated = helper.accumulateExposures(a, 
-#                                                                self.pScale, 
-#                                                                subtract=self.subtract)
-#                 self.bAccumulated = helper.accumulateExposures(b, 
-#                                                                self.pScale, 
-#                                                                subtract=self.subtract)
-#             else:
-#                 self.aBinned = helper.accumulateExposures(a, 
-#                                                           self.pScale, 
-#                                                           subtract=self.subtract, 
-#                                                           numBin=self.numBin)
-#                 self.bBinned = helper.accumulateExposures(b, 
-#                                                           self.pScale, 
-#                                                           subtract=self.subtract, 
-#                                                           numBin=self.numBin)
-#         else:
-#             # if no exception raised, use existing processed data:
-#             if self.numBin is None:
-#                 self.aAccumulated = ahdulist[0].data
-#                 self.bAccumulated = bhdulist[0].data
-#             else:
-#                 self.aBinned = ahdulist[0].data
-#                 self.bBinned = bhdulist[0].data
-
-#                 ahdulist.close()
-#                 bhdulist.close()
-
+                
     def fitExposures(self, fitMethod='hsm', fitPts=15, 
                      maxIters=400, max_ashift=75, max_amoment=5.0e5, 
                      savePath=None):
@@ -329,98 +262,6 @@ class SpeckleSeries():
         self.aFits = pd.concat(aFitResults, ignore_index=True)
         self.bFits = pd.concat(bFitResults, ignore_index=True)
             
-#     def kolmogorovFitExposures(self, fitPts=15):
-#         '''
-#         Fit object data (specify binned/accumulated PSFs) to Kolmogorov profile
-#         Saves the best fit parameters in a dataframe.
-#         TO DO:
-#         - save the fits!
-#         - implement possiblitiy of a Von Karman fit
-#         '''
-#         # length of sequence to fit
-#         N = len(self.aSeq)
-
-#         # if binned, define N_exp
-#         if self.numBin is not None:
-#             self.indices = None
-#             # N_exp is input to chi squared calculation
-#             N_exp = 1000 / N
-#         else:
-#             # make sure self.indices exists
-#             assert self.indices is not None,\
-#                 'Uh oh, expected self.indices for accumulated PSF data'
-#         # indices = [int(np.round(i)) - 1 for i in np.logspace(0, 3, fitPts)]
-
-#         aFitResults = []
-#         bFitResults = []
-
-#         aFitResiduals = []
-#         bFitResiduals = []
-
-#         for i in range(N):
-#             if self.indices is not None:  # i.e. if data is accumulated
-#                 N_exp = self.indices[i] + 1
-
-#             # fit the a filter image
-#             aParamRes = helper.singleExposureKolmogorov(self.aSeq[i] * self.gain['a'],
-#                                                         self.pScale, self.background['a'],
-#                                                         nExp=N_exp)
-#             aParam = aParamRes.params
-#             # make sure the fit converged well
-#             try:
-#                 aErr = np.sqrt(np.diag(aParamRes.covar))
-#             except AttributeError:
-#                 import lmfit
-#                 lmfit.report_fit(aParamRes)
-#                 print('check parameter bounds for a: too close to fit values?')
-#             # put results in a dataframe -> append to sequence list
-#             aResDict = {'g1': aParam['g1'].value, 's_g1': aErr[0],
-#                         'g2': aParam['g2'].value, 's_g2': aErr[1],
-#                         'hlr': aParam['hlr'].value, 's_hlr': aErr[2],
-#                         'x': aParam['offsetX'].value, 's_offsetX': aErr[3],
-#                         'y': aParam['offsetY'].value, 's_offsetY': aErr[4],
-#                         'flux': aParam['flux'], 's_flux': aErr[5],
-#                         'background': aParam['background'],
-#                         's_background': aErr[6],
-#                         'r_chi_sqr': aParamRes.redchi}
-
-#             aFitResiduals.append(aParamRes.residual)
-
-#             aFitResults.append(pd.DataFrame(data=aResDict, index=[0]))
-
-#             # fit the b filter image
-#             bParamRes = helper.singleExposureKolmogorov(self.bSeq[i] * self.gain['b'],
-#                                                         self.pScale, self.background['b'],
-#                                                         nExp=N_exp)
-#             bParam = bParamRes.params
-#             # make sure the fit converged well
-#             try:
-#                 bErr = np.sqrt(np.diag(bParamRes.covar))
-#             except ValueError:
-#                 import lmfit
-#                 lmfit.report_fit(bParamRes)
-#                 print('check parameter bounds for b: too close to fit values?')
-#             # results of fit to a dataframe, append to sequence list
-#             bResDict = {'g1': bParam['g1'].value, 's_g1': bErr[0],
-#                         'g2': bParam['g2'].value, 's_g2': bErr[1],
-#                         'hlr': bParam['hlr'].value, 's_hlr': bErr[2],
-#                         'x': bParam['offsetX'].value, 's_offsetX': bErr[3],
-#                         'y': bParam['offsetY'].value, 's_offsetY': bErr[4],
-#                         'flux': bParam['flux'].value, 's_flux': bErr[5],
-#                         'background': bParam['background'].value,
-#                         's_background': bErr[6],
-#                         'r_chi_sqr': bParamRes.redchi}
-
-#             bFitResiduals.append(aParamRes.residual)
-
-#             bFitResults.append(pd.DataFrame(data=bResDict, index=[0]))
-
-#         # concatenate all the dataframes together into one for each filter
-#         self.aFits = pd.concat(aFitResults, ignore_index=True)
-#         self.bFits = pd.concat(bFitResults, ignore_index=True)
-
-#         self.aFitResiduals = aFitResiduals
-#         self.bFitResiduals = bFitResiduals
 
 #     def plotResidual(self, filt, frm=None, paramsDict={}, figSize=(14, 12),
 #                      saveName=None):

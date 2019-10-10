@@ -327,7 +327,8 @@ class psfParameters():
         
         return
     
-    def plotCentroids(self, centroidFile='../Fits/centroids.p', save=False, figsize=(7.5,6), fontsize=12, adjust=False, cmap='BrBG', s=15):
+    def plotCentroids(self, centroidFile='../Fits/centroids.p', save=False, alpha=.75,
+                      figsize=(9,4), fontsize=12, ms=4, Nboot=1000, labelPos=(1,1)):
         pix = 'DSSI'
         try:
             with open(centroidFile, 'rb') as file:
@@ -335,44 +336,77 @@ class psfParameters():
         except FileNotFoundError:
             print('Please make sure the file exists where you think it does!')
         
+        # load in centroid and save their x and y second moments
         self.centroidSigmas = {'a':{}, 'b':{}}
-        
         for (name, color) in [('x','a'),('x','b'),('y','a'),('y','b')]:
             x = np.array([centroid[name] for (fileN, centroid) in centroidDict[color].items()])
             self.centroidSigmas[color][name] = np.sqrt(np.sum((x-x.mean(axis=1)[:,None])**2, axis=1)/x.shape[1])
         
-        a_lims = [np.min([self.centroidSigmas['a']['x'], self.centroidSigmas['a']['y']]),
-                  np.max([self.centroidSigmas['a']['x'], self.centroidSigmas['a']['y']])]
-        b_lims = [np.min([self.centroidSigmas['b']['x'], self.centroidSigmas['b']['y']]),
-                  np.max([self.centroidSigmas['b']['x'], self.centroidSigmas['b']['y']])]
+        diffsA = self.centroidSigmas['a']['x'] - self.centroidSigmas['a']['y']
+        diffsB = self.centroidSigmas['b']['x'] - self.centroidSigmas['b']['y']
 
         plt.figure(figsize=figsize)
         
-        for i in range(1,5):
-            color = ['a', 'b', 'a' ,'b'][i-1]
-            plt.subplot(2,2,i)
-            g = self.parameters['15'][pix][color]['g1' if i<3 else 'g2'][:,-1]
-            if adjust and i == 2:
-                g -= g.mean()
-            plt.scatter(self.centroidSigmas[color]['x'], self.centroidSigmas[color]['y'], 
-                        alpha=0.8, s=s, c=g, cmap=cmap,vmin=-np.max(np.abs(g)), vmax=np.max(np.abs(g)))
-            cb = plt.colorbar()
-            if color=='a':
-                plt.plot(a_lims, a_lims, '--', color='lightgray')
-            else: 
-                plt.plot(b_lims, b_lims, '--', color='lightgray')
+        for i in range(2):
+            param = ['g1','g2'][i]
+            # calculate correlation coefficients
+            rho_a = np.corrcoef(self.parameters['15']['DSSI']['a'][param][:,-1], diffsA, rowvar=False)[0,-1]
+            rho_b = np.corrcoef(self.parameters['15']['DSSI']['b'][param][:,-1], diffsB, rowvar=False)[0,-1]
+
+            # bootstrap uncertainties for these (should I be saving?)
+            err_a = np.std(helper.bootstrapCorr(self.parameters['15']['DSSI']['a'][param][:,-1], diffsA, B=Nboot))
+            err_b = np.std(helper.bootstrapCorr(self.parameters['15']['DSSI']['b'][param][:,-1], diffsB, B=Nboot))
             
-            if i%2==1: 
-                plt.ylabel('centroid $\sigma_y$ [pix]', fontsize=fontsize)
-            if i<3: 
-                cb.ax.set_title('g$_1$')
-                if adjust and i==2:
-                    cb.ax.set_title('g$_1$ (adjusted)')
-                plt.title('692 nm' if color=='a' else '880 nm')
-            else: 
-                cb.ax.set_title('g$_2$')
-                plt.xlabel('centroid $\sigma_x$ [pix]', fontsize=fontsize)
+            ax = plt.subplot(1,2,i+1)
+            plt.plot(diffsA, self.parameters['15']['DSSI']['a'][param][:,-1], 'o', ms=ms,
+                     color=self.col['a'], alpha=alpha, label=fr'$\rho$={rho_a:.2f}$\pm${err_a:.2f}')
+            plt.plot(diffsB, self.parameters['15']['DSSI']['b'][param][:,-1], 'o', ms=ms,
+                     color=self.col['b'], alpha=alpha, label=fr'$\rho$={rho_b:.2f}$\pm${err_b:.2f}')
+            ax.text(labelPos[0], labelPos[1]-.025, fr'$\rho$={rho_a:.2f}$\pm${err_a:.2f}', 
+                    color=self.col['a'], transform=ax.transAxes,
+                   verticalalignment='top', horizontalalignment='left')
+            ax.text(labelPos[0], labelPos[1], fr'$\rho$={rho_b:.2f}$\pm${err_b:.2f}', 
+                    color=self.col['b'], transform=ax.transAxes)
+            plt.axhline(0, linestyle='--', color='lightgray')
+            plt.axvline(0, linestyle='--', color='lightgray')
+            plt.ylabel('g$_1$' if i==0 else 'g$_2$', fontsize=fontsize)
+            plt.xlabel('$\sigma_x$ - $\sigma_y$', fontsize=fontsize)
+#             plt.legend()
+
         plt.tight_layout()
+        
+#         a_lims = [np.min([self.centroidSigmas['a']['x'], self.centroidSigmas['a']['y']]),
+#                   np.max([self.centroidSigmas['a']['x'], self.centroidSigmas['a']['y']])]
+#         b_lims = [np.min([self.centroidSigmas['b']['x'], self.centroidSigmas['b']['y']]),
+#                   np.max([self.centroidSigmas['b']['x'], self.centroidSigmas['b']['y']])]
+
+#         plt.figure(figsize=figsize)
+        
+#         for i in range(1,5):
+#             color = ['a', 'b', 'a' ,'b'][i-1]
+#             plt.subplot(2,2,i)
+#             g = self.parameters['15'][pix][color]['g1' if i<3 else 'g2'][:,-1]
+#             if adjust and i == 2:
+#                 g -= g.mean()
+#             plt.scatter(self.centroidSigmas[color]['x'], self.centroidSigmas[color]['y'], 
+#                         alpha=0.8, s=s, c=g, cmap=cmap,vmin=-np.max(np.abs(g)), vmax=np.max(np.abs(g)))
+#             cb = plt.colorbar()
+#             if color=='a':
+#                 plt.plot(a_lims, a_lims, '--', color='lightgray')
+#             else: 
+#                 plt.plot(b_lims, b_lims, '--', color='lightgray')
+            
+#             if i%2==1: 
+#                 plt.ylabel('centroid $\sigma_y$ [pix]', fontsize=fontsize)
+#             if i<3: 
+#                 cb.ax.set_title('g$_1$')
+#                 if adjust and i==2:
+#                     cb.ax.set_title('g$_1$ (adjusted)')
+#                 plt.title('692 nm' if color=='a' else '880 nm')
+#             else: 
+#                 cb.ax.set_title('g$_2$')
+#                 plt.xlabel('centroid $\sigma_x$ [pix]', fontsize=fontsize)
+#         plt.tight_layout()
         if save:
             plt.savefig('../Plots/Results/centroidSpread.png')
             plt.close()
@@ -384,10 +418,10 @@ class psfParameters():
         a = plt.subplot(211)
         plt.plot(np.sqrt(self.centroidSigmas['a']['x']**2 + self.centroidSigmas['a']['y']**2), 
                  self.parameters['15'][pix]['a']['size'][:,-1], 
-                 'o', alpha=0.75, ms=4, color=self.col['a'], label='692nm')
+                 'o', alpha=alpha, ms=ms, color=self.col['a'], label='692nm')
         plt.plot(np.sqrt(self.centroidSigmas['b']['x']**2 + self.centroidSigmas['b']['y']**2), 
                  self.parameters['15'][pix]['b']['size'][:,-1], 
-                 'o', alpha=0.75, ms=4, color=self.col['b'], label='880nm')
+                 'o', alpha=alpha, ms=ms, color=self.col['b'], label='880nm')
         a.tick_params(labelbottom=False)
         plt.ylabel(f'{self.size} [pixel]', fontsize=fontsize)
         plt.legend(loc=4)
@@ -395,12 +429,12 @@ class psfParameters():
         plt.subplot(212)
         plt.plot(np.sqrt(self.centroidSigmas['a']['x']**2 + self.centroidSigmas['a']['y']**2), 
                  np.sqrt(self.parameters['15'][pix]['a']['g1'][:,-1]**2+self.parameters['15'][pix]['a']['g2'][:,-1]**2), 
-                 'o', alpha=0.75, ms=4, color=self.col['a'], label='692nm')
+                 'o', alpha=alpha, ms=ms, color=self.col['a'], label='692nm')
         plt.plot(np.sqrt(self.centroidSigmas['b']['x']**2 + self.centroidSigmas['b']['y']**2), 
                  np.sqrt(self.parameters['15'][pix]['b']['g1'][:,-1]**2+self.parameters['15'][pix]['b']['g2'][:,-1]**2), 
-                 'o', alpha=0.75, ms=4, color=self.col['b'], label='880nm')
+                 'o', alpha=alpha, ms=ms, color=self.col['b'], label='880nm')
         plt.ylabel('|g|', fontsize=fontsize)
-        plt.xlabel('centroid $\sigma$ [pixels]', fontsize=fontsize)
+        plt.xlabel('$\sqrt{\sigma_x^2 + \sigma_y^2}$ [pixels]', fontsize=fontsize)
         
         plt.tight_layout()
         if save:

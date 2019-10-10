@@ -328,7 +328,7 @@ class psfParameters():
         return
     
     def plotCentroids(self, centroidFile='../Fits/centroids.p', save=False, alpha=.75,
-                      figsize=(9,4), fontsize=12, ms=4, Nboot=1000, labelPos=(1,1)):
+                      figsize=(9,4), fontsize=12, ms=5, Nboot=1000, labelPos=(0.04,.92)):
         pix = 'DSSI'
         try:
             with open(centroidFile, 'rb') as file:

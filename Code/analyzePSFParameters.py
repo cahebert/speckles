@@ -19,11 +19,11 @@ class psfParameters():
         self.N = N
         self.size = size
         
-        self.parameters = {psfN:{pix:{} for pix in ['LSST', 'DSSI']} for psfN in ['2', '4', '15']}
+        self.parameters = {psfN:{pix:{} for pix in ['LSST', 'DSSI']} for psfN in ['2', '4', '12', '15']}
         self.eDropoff = {'DSSI': {}, 'LSST': {}}
         self.bootstrapE = {'DSSI': {}, 'LSST': {}}
-        self.bootstrapR = {psfN:{'DSSI': {}, 'LSST': {}} for psfN in ['2', '4', '15']}
-        self.R = {psfN:{pix:{} for pix in ['LSST', 'DSSI']} for psfN in ['2', '4']}
+        self.bootstrapR = {psfN:{'DSSI': {}, 'LSST': {}} for psfN in ['2', '4', '12', '15']}
+        self.R = {psfN:{pix:{} for pix in ['LSST', 'DSSI']} for psfN in ['2', '4', '12']}
         
         # plotting settings
 #         self.fontsize = 12
@@ -74,16 +74,16 @@ class psfParameters():
             
     def loadAllParameters(self, filePath='Fits/{}pixels/{}Filter/img{}_{}psfs.p'):
         
-        for psfN in ['2', '4', '15']:
+        for psfN in ['2', '4', '12', '15']:
             for pix in ['DSSI', 'LSST']:
                 self.loadParameterSet(psfN, pix)
         
     def analyzeBinnedParameters(self, pix, B=1000):
-        for psfN in ['2', '4']:
+        for psfN in ['2', '4', '12']:
             if 'a' not in self.parameters[psfN][pix].keys():
                 self.loadParameterSet(psfN, pix)
             
-        for psfN in ['2', '4']:
+        for psfN in ['2', '4', '12']:
             # Compute correlation coefficients for g1 and g2 in both filters
             self.R[psfN][pix] = helper.corrDict(self.parameters[psfN][pix], parameter='ellipticity')
             # Bootstrap correlation coefficients for g1 and g2 in both filters
@@ -96,7 +96,7 @@ class psfParameters():
                                                                  parameter='size', bootstrap=True, B=B)
 
             
-    def plotBinnedParameters(self, pix, psfN, alpha=0.6, fontsize=12, limits=(-.18,.11), 
+    def plot30sParameters(self, pix, psfN, alpha=0.6, fontsize=12, limits=(-.18,.11), 
                              figsize=(11,4), save=False, ellipse=False, ellipseArgs=None):
 
         # plot correlation of 30s PSFs

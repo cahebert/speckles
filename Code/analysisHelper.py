@@ -23,33 +23,34 @@ def corrDict(thing, parameter, bootstrap=False, B=1000, N=62):
     Calculate correlation coefficients for PSF parameters
     Can calculate these using bootstrap samples of original data
     '''
-    pairs = [l for k in [[(i,j) for j in range(i,4) if i!=j] for i in range(4)] for l in k]
     if parameter == 'size':
         nVars = thing['a'][parameter].shape[1]
+        pairs = [l for k in [[(i,j) for j in range(i,nVars) if i!=j] for i in range(nVars)] for l in k]
         if bootstrap:
             if nVars == 2:
                 corrDict = {c: bootstrapCorr(thing[c]['size'][:,0], thing[c]['size'][:,1], B, N)
                                for c in ['a', 'b']}
-            elif nVars == 4:
+            else:
                 corrDict = {c: {f'{i}{j}': bootstrapCorr(thing[c]['size'][:,i], thing[c]['size'][:,j], B, N)
                                 for (i,j) in pairs} for c in ['a', 'b']}
         else:
             if nVars == 2:
                 corrDict = {c: np.corrcoef(thing[c]['size'][:,0], thing[c]['size'][:,1], rowvar=False)[0,-1]
                                for c in ['a', 'b']}
-            elif nVars == 4:
+            else:
                 corrDict = {c: {f'{i}{j}': np.corrcoef(thing[c]['size'][:,i], thing[c]['size'][:,j], 
                                                           rowvar=False)[0,-1]
                                 for (i,j) in pairs} for c in ['a', 'b']}
 
     elif parameter == 'ellipticity':
         nVars = thing['a']['g1'].shape[1]
+        pairs = [l for k in [[(i,j) for j in range(i,nVars) if i!=j] for i in range(nVars)] for l in k]
         if bootstrap:
             if nVars == 2:
                 corrDict = {ellipticity:
                                {c: bootstrapCorr(thing[c][ellipticity][:,0], thing[c][ellipticity][:,1], B, N)
                                for c in ['a', 'b']} for ellipticity in ['g1', 'g2']}
-            elif nVars == 4:
+            else:
                 corrDict = {ellipticity:
                                {c: {f'{i}{j}': bootstrapCorr(thing[c][ellipticity][:,i], 
                                                              thing[c][ellipticity][:,j], B, N)
@@ -60,7 +61,7 @@ def corrDict(thing, parameter, bootstrap=False, B=1000, N=62):
                                {c: np.corrcoef(thing[c][ellipticity][:,0], 
                                                thing[c][ellipticity][:,1], rowvar=False)[0,-1]
                                for c in ['a', 'b']} for ellipticity in ['g1', 'g2']}
-            elif nVars == 4:
+            else:
                 corrDict = {ellipticity:
                                {c: {f'{i}{j}': np.corrcoef(thing[c][ellipticity][:,i], 
                                                            thing[c][ellipticity][:,j], rowvar=False)[0,-1]

@@ -78,7 +78,7 @@ class psfParameters():
             for pix in ['DSSI', 'LSST']:
                 self.loadParameterSet(psfN, pix)
         
-    def analyzeBinnedParameters(self, pix, Nboot=1000):
+    def analyzeBinnedParameters(self, pix, B=1000):
         for psfN in ['2', '4']:
             if 'a' not in self.parameters[psfN][pix].keys():
                 self.loadParameterSet(psfN, pix)
@@ -88,12 +88,12 @@ class psfParameters():
             self.R[psfN][pix] = helper.corrDict(self.parameters[psfN][pix], parameter='ellipticity')
             # Bootstrap correlation coefficients for g1 and g2 in both filters
             self.bootstrapR[psfN][pix] = helper.corrDict(self.parameters[psfN][pix], 
-                                                         parameter='ellipticity', bootstrap=True)
+                                                         parameter='ellipticity', bootstrap=True, B=B)
             
             # Repeat for size parameter
             self.R[psfN][pix]['size'] = helper.corrDict(self.parameters[psfN][pix], parameter='size')
             self.bootstrapR[psfN][pix]['size'] = helper.corrDict(self.parameters[psfN][pix], 
-                                                                 parameter='size', bootstrap=True)
+                                                                 parameter='size', bootstrap=True, B=B)
 
             
     def plotBinnedParameters(self, pix, psfN, alpha=0.6, fontsize=12, limits=(-.18,.11), 
@@ -329,7 +329,11 @@ class psfParameters():
     
     def plotCentroids(self, centroidFile='../Fits/centroids.p', save=False, alpha=.75,
                       figsize=(9,4), fontsize=12, ms=5, Nboot=1000, labelPos=(0.04,.92)):
+        '''
+        Generate a plot of the impact of centroid motion on PSF parameters.
+        '''
         pix = 'DSSI'
+        # load centroid dict
         try:
             with open(centroidFile, 'rb') as file:
                 centroidDict = pickle.load(file)
@@ -358,55 +362,26 @@ class psfParameters():
             err_b = np.std(helper.bootstrapCorr(self.parameters['15']['DSSI']['b'][param][:,-1], diffsB, B=Nboot))
             
             ax = plt.subplot(1,2,i+1)
+            # plot g_i vs difference of second moments for both filters
             plt.plot(diffsA, self.parameters['15']['DSSI']['a'][param][:,-1], 'o', ms=ms,
                      color=self.col['a'], alpha=alpha, label=fr'$\rho$={rho_a:.2f}$\pm${err_a:.2f}')
             plt.plot(diffsB, self.parameters['15']['DSSI']['b'][param][:,-1], 'o', ms=ms,
                      color=self.col['b'], alpha=alpha, label=fr'$\rho$={rho_b:.2f}$\pm${err_b:.2f}')
+            # add text with correlation coefficients + bootstrapped errors (color coded text)
             ax.text(labelPos[0], labelPos[1]-.025, fr'$\rho$={rho_a:.2f}$\pm${err_a:.2f}', 
                     color=self.col['a'], transform=ax.transAxes,
                    verticalalignment='top', horizontalalignment='left')
             ax.text(labelPos[0], labelPos[1], fr'$\rho$={rho_b:.2f}$\pm${err_b:.2f}', 
                     color=self.col['b'], transform=ax.transAxes)
+            # add lines through along 0s
             plt.axhline(0, linestyle='--', color='lightgray')
             plt.axvline(0, linestyle='--', color='lightgray')
+            # axis labels
             plt.ylabel('g$_1$' if i==0 else 'g$_2$', fontsize=fontsize)
             plt.xlabel('$\sigma_x$ - $\sigma_y$', fontsize=fontsize)
-#             plt.legend()
 
         plt.tight_layout()
-        
-#         a_lims = [np.min([self.centroidSigmas['a']['x'], self.centroidSigmas['a']['y']]),
-#                   np.max([self.centroidSigmas['a']['x'], self.centroidSigmas['a']['y']])]
-#         b_lims = [np.min([self.centroidSigmas['b']['x'], self.centroidSigmas['b']['y']]),
-#                   np.max([self.centroidSigmas['b']['x'], self.centroidSigmas['b']['y']])]
 
-#         plt.figure(figsize=figsize)
-        
-#         for i in range(1,5):
-#             color = ['a', 'b', 'a' ,'b'][i-1]
-#             plt.subplot(2,2,i)
-#             g = self.parameters['15'][pix][color]['g1' if i<3 else 'g2'][:,-1]
-#             if adjust and i == 2:
-#                 g -= g.mean()
-#             plt.scatter(self.centroidSigmas[color]['x'], self.centroidSigmas[color]['y'], 
-#                         alpha=0.8, s=s, c=g, cmap=cmap,vmin=-np.max(np.abs(g)), vmax=np.max(np.abs(g)))
-#             cb = plt.colorbar()
-#             if color=='a':
-#                 plt.plot(a_lims, a_lims, '--', color='lightgray')
-#             else: 
-#                 plt.plot(b_lims, b_lims, '--', color='lightgray')
-            
-#             if i%2==1: 
-#                 plt.ylabel('centroid $\sigma_y$ [pix]', fontsize=fontsize)
-#             if i<3: 
-#                 cb.ax.set_title('g$_1$')
-#                 if adjust and i==2:
-#                     cb.ax.set_title('g$_1$ (adjusted)')
-#                 plt.title('692 nm' if color=='a' else '880 nm')
-#             else: 
-#                 cb.ax.set_title('g$_2$')
-#                 plt.xlabel('centroid $\sigma_x$ [pix]', fontsize=fontsize)
-#         plt.tight_layout()
         if save:
             plt.savefig('../Plots/Results/centroidSpread.png')
             plt.close()

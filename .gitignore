@@ -1,0 +1,6 @@
+Code/.ipynb_checkpoints/**
+Code/__pycache__/**
+Code/IntermediateSteps/.ipynb_checkpoints/**
+Fits/DSSIpixels/**
+Fits/LSSTpixels/**
+Fits/pre-sept19/**

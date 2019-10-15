@@ -163,7 +163,7 @@ def subtractBackground(imgSeries, accumulated=False, expMaskDict=None, method='s
             img -= np.mean(sideSlices[minVariance][sideSlices[minVariance]!=0])
 
 
-def accumulateExposures(sequence, maskDict=None, subtract=True, indices=None, numBins=None):
+def accumulateExposures(sequence, maskDict=None, subtract=True, indices=None, numBins=None, overRide=False):
     '''
     Accumulates exposures (or bins data) for given sequence, returns result
     '''
@@ -215,8 +215,10 @@ def accumulateExposures(sequence, maskDict=None, subtract=True, indices=None, nu
 
     # if binning data
     else:
-        assert N % float(numBins) == 0, \
-            'Number of requested bins does not divide length of dataset'
+        residual = N % float(numBins)
+        if residual != 0 and overRide is False:
+            raise ValueError(f'Number of requested bins ({numBins}) does not divide length of dataset ({N})')
+        
         binSize = int(N / numBins)
 
         binnedPSF = [

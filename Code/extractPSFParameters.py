@@ -70,63 +70,70 @@ def extractPSFParameters(args):
             
             # calculate 200 centroids throughout the dataset, each on a stack of 5 exposures
             centroidDict[color][fileNumber] = imgHelper.calculateCentroids(data, N=200, subtract=True)
-            print(fileNumber)
+#             print(fileNumber)
         
             ## accumulate stacked PSFs for DSSI pixels
-#             dssi_series = []
+            dssi_series = []
             
-#             # 4x15s stacks
-#             dssi_series.append( imgHelper.accumulateExposures(sequence=data, numBins=4,
-#                                                            subtract=False, 
-#                                                            maskDict=maskDict) )
-#             # 2x30s stacks
-#             dssi_series.append( imgHelper.accumulateExposures(sequence=data, numBins=2,
-#                                                            subtract=False, 
-#                                                            maskDict=maskDict) )
-#             # full 60s stack: save 15 images at 2^N exposure time
-#             indices = [int(np.round(i)) - 1 for i in np.logspace(0, 3, 15)]
+            # 12x5s stacks
+            dssi_series.append( imgHelper.accumulateExposures(sequence=data, numBins=12,
+                                                           subtract=False, 
+                                                           maskDict=maskDict) )
+            # 4x15s stacks
+            dssi_series.append( imgHelper.accumulateExposures(sequence=data, numBins=4,
+                                                           subtract=False, 
+                                                           maskDict=maskDict) )
+            # 2x30s stacks
+            dssi_series.append( imgHelper.accumulateExposures(sequence=data, numBins=2,
+                                                           subtract=False, 
+                                                           maskDict=maskDict) )
+            # full 60s stack: save 15 images at 2^N exposure time
+            indices = [int(np.round(i)) - 1 for i in np.logspace(0, 3, 15)]
 
-#             dssi_series.append( imgHelper.accumulateExposures(sequence=data, 
-#                                                            subtract=False, 
-#                                                            maskDict=maskDict,
-#                                                            indices=indices) )
+            dssi_series.append( imgHelper.accumulateExposures(sequence=data, 
+                                                           subtract=False, 
+                                                           maskDict=maskDict,
+                                                           indices=indices) )
 
-#             ## accumulate for LSST pixels   
-#             # if no mask for dataset, easy: just spatially bin the already processed sequences
-#             if maskDict is None:
-#                 lsst_series = [
-#                     [np.array([imgHelper.spatialBinToLSST(img) for img in dssi_series[i][0]]), 0] 
-#                     for i in range(3)]
+            ## accumulate for LSST pixels   
+            # if no mask for dataset, easy: just spatially bin the already processed sequences
+            if maskDict is None:
+                lsst_series = [
+                    [np.array([imgHelper.spatialBinToLSST(img) for img in dssi_series[i][0]]), 0] 
+                    for i in range(3)]
 
-#             # if there are masks, then have to spatially bin first (using masks) and then reprocess.
-#             else: 
-#                 lsst_data = np.array([imgHelper.spatialBinToLSST(data[i]) for i in range(1000)])
-#                 for i in maskDict.keys():
-#                     lsst_data[i] = imgHelper.spatialBinToLSST(data[i], expMask=maskDict[i])
+            # if there are masks, then have to spatially bin first (using masks) and then reprocess.
+            else: 
+                lsst_data = np.array([imgHelper.spatialBinToLSST(data[i]) for i in range(1000)])
+                for i in maskDict.keys():
+                    lsst_data[i] = imgHelper.spatialBinToLSST(data[i], expMask=maskDict[i])
                     
-#                 lsst_series = []
-#                 # 4x15s stacks
-#                 lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, numBins=4,
-#                                                                subtract=False) )
-#                 # 2x30s stacks
-#                 lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, numBins=2,
-#                                                                subtract=False) )
-#                 # full 60s stack
-#                 lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, indices=indices,
-#                                                                subtract=False) )
+                lsst_series = []
+                # 12x5s stacks
+                lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, numBins=12,
+                                                               subtract=False) )
+                # 4x15s stacks
+                lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, numBins=4,
+                                                               subtract=False) )
+                # 2x30s stacks
+                lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, numBins=2,
+                                                               subtract=False) )
+                # full 60s stack
+                lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, indices=indices,
+                                                               subtract=False) )
                 
-#             names = ['4', '2', '15']
-#             ## extract PSF parameters
-#             for i in range(3):
-#                 # for DSSI
-#                 savePathDSSI = args.baseDir + args.savePath.format('DSSI', color, fileNumber, names[i])
-#                 imgHelper.estimateMomentsHSM(dssi_series[i][0], maskDict=dssi_series[i][1], 
-#                                           saveDict={'save':True, 'path':savePathDSSI})
-#                 # for LSST
-#                 savePathLSST = args.baseDir + args.savePath.format('LSST', color, fileNumber, names[i])
-#                 imgHelper.estimateMomentsHSM(lsst_series[i][0], max_ashift=15, 
-#                                           saveDict={'save':True, 'path':savePathLSST},
-#                                           strict=False)
+            names = ['12', '4', '2', '15']
+            ## extract PSF parameters
+            for i in range(3):
+                # for DSSI
+                savePathDSSI = args.baseDir + args.savePath.format('DSSI', color, fileNumber, names[i])
+                imgHelper.estimateMomentsHSM(dssi_series[i][0], maskDict=dssi_series[i][1], 
+                                          saveDict={'save':True, 'path':savePathDSSI})
+                # for LSST
+                savePathLSST = args.baseDir + args.savePath.format('LSST', color, fileNumber, names[i])
+                imgHelper.estimateMomentsHSM(lsst_series[i][0], max_ashift=15, 
+                                          saveDict={'save':True, 'path':savePathLSST},
+                                          strict=False)
 
     # save the dict of all centroid fits to a pickle file
     with open(args.baseDir + 'Fits/centroids.p', 'wb') as file:

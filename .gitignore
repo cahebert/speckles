@@ -1,6 +1,4 @@
-Code/.ipynb_checkpoints/**
-Code/__pycache__/**
-Code/IntermediateSteps/.ipynb_checkpoints/**
+Plots/Results/.ipynb_checkpoints/**
+Code/oldNotebooks/**
 Fits/DSSIpixels/**
 Fits/LSSTpixels/**
-Fits/pre-sept19/**

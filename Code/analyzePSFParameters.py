@@ -5,7 +5,6 @@ import pandas as pd
 from matplotlib.lines import Line2D
 import analysisHelper as helper
 import seaborn
-from palettable.cmocean.sequential import Amp_20
 
 class psfParameters():
     '''
@@ -328,7 +327,7 @@ class psfParameters():
         return
     
     def plotCentroids(self, centroidFile='../Fits/centroids.p', save=False, alpha=.75,
-                      figsize=(9,4), fontsize=12, ms=5, Nboot=1000, labelPos=(0.04,.92)):
+                      figsize=(9,4), fontsize=12, ms=5, B=1000, labelPos=(0.04,.92)):
         '''
         Generate a plot of the impact of centroid motion on PSF parameters.
         '''
@@ -343,7 +342,7 @@ class psfParameters():
         # load in centroid and save their x and y second moments
         self.centroidSigmas = {'a':{}, 'b':{}}
         for (name, color) in [('x','a'),('x','b'),('y','a'),('y','b')]:
-            x = np.array([centroid[name] for (fileN, centroid) in centroidDict[color].items()])
+            x = np.array([centroid[name] for (fileN, centroid) in centroidDict[color].items() if fileN!='025'])
             self.centroidSigmas[color][name] = np.sqrt(np.sum((x-x.mean(axis=1)[:,None])**2, axis=1)/x.shape[1])
         
         diffsA = self.centroidSigmas['a']['x'] - self.centroidSigmas['a']['y']
@@ -354,18 +353,18 @@ class psfParameters():
         for i in range(2):
             param = ['g1','g2'][i]
             # calculate correlation coefficients
-            rho_a = np.corrcoef(self.parameters['15']['DSSI']['a'][param][:,-1], diffsA, rowvar=False)[0,-1]
-            rho_b = np.corrcoef(self.parameters['15']['DSSI']['b'][param][:,-1], diffsB, rowvar=False)[0,-1]
+            rho_a = np.corrcoef(self.parameters['15'][pix]['a'][param][:,-1], diffsA, rowvar=False)[0,-1]
+            rho_b = np.corrcoef(self.parameters['15'][pix]['b'][param][:,-1], diffsB, rowvar=False)[0,-1]
 
             # bootstrap uncertainties for these (should I be saving?)
-            err_a = np.std(helper.bootstrapCorr(self.parameters['15']['DSSI']['a'][param][:,-1], diffsA, B=Nboot))
-            err_b = np.std(helper.bootstrapCorr(self.parameters['15']['DSSI']['b'][param][:,-1], diffsB, B=Nboot))
+            err_a = np.std(helper.bootstrapCorr(self.parameters['15'][pix]['a'][param][:,-1], diffsA, B=B))
+            err_b = np.std(helper.bootstrapCorr(self.parameters['15'][pix]['b'][param][:,-1], diffsB, B=B))
             
             ax = plt.subplot(1,2,i+1)
             # plot g_i vs difference of second moments for both filters
-            plt.plot(diffsA, self.parameters['15']['DSSI']['a'][param][:,-1], 'o', ms=ms,
+            plt.plot(diffsA, self.parameters['15'][pix]['a'][param][:,-1], 'o', ms=ms,
                      color=self.col['a'], alpha=alpha, label=fr'$\rho$={rho_a:.2f}$\pm${err_a:.2f}')
-            plt.plot(diffsB, self.parameters['15']['DSSI']['b'][param][:,-1], 'o', ms=ms,
+            plt.plot(diffsB, self.parameters['15'][pix]['b'][param][:,-1], 'o', ms=ms,
                      color=self.col['b'], alpha=alpha, label=fr'$\rho$={rho_b:.2f}$\pm${err_b:.2f}')
             # add text with correlation coefficients + bootstrapped errors (color coded text)
             ax.text(labelPos[0], labelPos[1]-.025, fr'$\rho$={rho_a:.2f}$\pm${err_a:.2f}', 
@@ -415,4 +414,45 @@ class psfParameters():
         if save:
             plt.savefig('../Plots/Results/centroidSpreadImpact.png', dpi=200)
             plt.close()
+        plt.show()
+        
+    def chromaticityPlots(self, pix='DSSI', figsize=(7,4), plotOutlier=True, color='darkcyan', ms=5, save=False):
+        sizeA = self.parameters['15'][pix]['a']['size'][:,-1]
+        sizeB = self.parameters['15'][pix]['b']['size'][:,-1]
+        lamA = 692
+        lamB = 880
+        b = (np.log(sizeA) - np.log(sizeB)) / (np.log(lamA) - np.log(lamB))
+        self.b = b
+        
+        plt.figure(figsize=figsize)
+        grid = plt.GridSpec(1, 4, wspace=0, hspace=0)
+
+        plt.subplot(grid[:,:3])
+        if plotOutlier:
+            sA, sB = (34.57257308006287, 34.71819967746735)
+            bOutlier = (np.log(sA) - np.log(sB)) / (np.log(lamA) - np.log(lamB))
+            b = np.hstack([b, bOutlier])
+            sizeA = np.hstack([sizeA, sA])
+
+        plt.plot(sizeA*.011, b, 'o', color=color, ms=ms)
+        plt.xlabel('FWHM$_{692nm}$ [arcsec]', fontsize=12)
+        plt.ylabel('b', fontsize=12)
+        # Kolmogorov prediction: sizeA = (lamA/lamB)^b * sizeB
+        plt.axhline(-0.2, linestyle='--', color='darkgrey', linewidth=1, label='Kolmogorov turbulence')
+        plt.legend(frameon=False, fontsize=12)
+        plt.xticks([.4,.6,.8,1.,1.2])
+
+        ax = plt.subplot(grid[:,3:])
+        plt.axhline(b.mean(), linestyle='--', color=color)
+        plt.hist(b, histtype='step', bins=10, color=color, orientation="horizontal")
+        plt.hist(b, bins=10, color=color, alpha=0.15, orientation="horizontal")
+        ax.text(2, -.46, f'$-${abs(b.mean()):.1f}$\pm${b.std():.1f}', fontsize=12, color=color)
+        ax.text(2, -.46, f'$-${abs(b.mean()):.1f}$\pm${b.std():.1f}', 
+                fontsize=12, alpha=0.75, color='darkslategrey')
+        plt.yticks([0,-.2,-.4,-.6,-.8],[])
+        plt.axhline(-0.2, linestyle='--', color='darkgrey', linewidth=1, label='Kolmogorov turbulence')
+
+        plt.tight_layout()
+        if save:
+            plt.savefig(f'../Plots/Results/chromaticity_{pix}.png', bbox_to_inches='tight', dpi=250)
         plt.show()

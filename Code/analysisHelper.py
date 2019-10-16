@@ -4,7 +4,36 @@ from scipy.optimize import curve_fit
 import sklearn.utils
 from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
-
+from astropy.io import fits
+    
+def imagePSF(fileN, save, filePath='/global/cscratch1/sd/chebert/rawSpeckles/img_{}_{}.fits'):
+    hdu = fits.open(filePath.format('a', fileN))
+    dataA = hdu[0].data[:,:,::-1]
+    hdu.close()
+    hdu = fits.open(filePath.format('b', fileN))
+    dataB = hdu[0].data
+    hdu.close()
+    
+    plt.figure(figsize=(6,3))
+    ax=plt.subplot(121)
+    plt.imshow(dataA.mean(axis=0), origin='lower', cmap='plasma')
+    plt.xticks([0, 64, 128, 192, 256], [0, .7, 1.4, 2.1, 2.8])
+    plt.yticks([0, 64, 128, 192, 256], [0, .7, 1.4, 2.1, 2.8])
+    plt.ylabel('[arcsec]')
+    plt.xlabel('[arcsec]')
+    ax.text(5, 235, '692nm', color='gold', fontsize=12)
+    ax=plt.subplot(122)
+    plt.imshow(dataB.mean(axis=0), origin='lower', cmap='plasma')
+    plt.xticks([0, 64, 128, 192, 256], [0, .7, 1.4, 2.1, 2.8])
+    plt.yticks([0, 64, 128, 192, 256], [])
+    ax.text(5, 235, '880nm', color='gold', fontsize=12)
+    plt.xlabel('[arcsec]')
+    
+    plt.tight_layout()
+    if save:
+        plt.savefig(f'../Plots/psfImage_{fileN}.png', bbox_to_inches='tight', dpi=200)
+    plt.show()
+    
 def pearsonEllipse(pearson, ax, label, mean_x, mean_y, scale_x, scale_y, edgecolor, ellipseArgs):
     x_radius = np.sqrt(1 + pearson)
     y_radius = np.sqrt(1 - pearson)

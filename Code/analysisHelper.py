@@ -18,7 +18,7 @@ def pearsonEllipse(pearson, ax, label, mean_x, mean_y, scale_x, scale_y, edgecol
     ellipse.set_transform(transf + ax.transData)
     return ax.add_patch(ellipse)
 
-def corrDict(thing, parameter, bootstrap=False, B=1000, N=62):
+def corrDict(thing, parameter, bootstrap=False, B=1000, N=61):
     '''
     Calculate correlation coefficients for PSF parameters
     Can calculate these using bootstrap samples of original data
@@ -68,7 +68,7 @@ def corrDict(thing, parameter, bootstrap=False, B=1000, N=62):
                                 for (i,j) in pairs} for c in ['a', 'b']} for ellipticity in ['g1', 'g2']}
     return corrDict
         
-def bootstrapCorr(thing1, thing2, B, N=62):
+def bootstrapCorr(thing1, thing2, B, N=61):
     idx = range(len(thing1))
     samples = []
     for i in range(B):
@@ -76,7 +76,7 @@ def bootstrapCorr(thing1, thing2, B, N=62):
         samples.append(np.corrcoef(thing1[resampledIdx], thing2[resampledIdx], rowvar=False)[0,-1])
     return samples
     
-def bootstrap(thing, N=62):
+def bootstrap(thing, N=61):
     return sklearn.utils.resample(thing, replace=True, n_samples=N)
     
 def powerLaw(t, alpha, a, asymptote=0):

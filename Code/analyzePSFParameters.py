@@ -11,7 +11,7 @@ class psfParameters():
     '''
     Class to load and analyze PSF parameters extracted from speckle images
     '''
-    def __init__(self, source, fileNumbers='Code/fileNumbers.txt', N=62, 
+    def __init__(self, source, fileNumbers='Code/fileNumbers.txt', N=61, 
                  baseDir='/global/homes/c/chebert/SpecklePSF/', size='FWHM'):
         self.source = source
         self.base = baseDir

@@ -6,7 +6,72 @@ from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
 from astropy.io import fits
     
+def plotRvT(ax1, ax2, psfN, color, goodSeeing, badSeeing, goodBoot=None, badBoot=None,
+            ylims=[0,.9], alpha=1):
+    '''
+    Meant as a helper function to be called from the analysis class. 
+    Plot the correlation functions of g1 and g2, with the data split between good and bad seeing
+    Inputs:
+    - 2 axis instances
+    - number of psf bins (expect either '4' or '12')
+    - color ('a' or 'b') corresponding to which filter you want to plot
+    - goodSeeing and badSeeing, dicts containing the correlation coefficients.
+    '''
+    if psfN == '12':
+        pairs = [[i for i in goodSeeing['g1']['a'].keys() if i[0] == str(j) or (i=='1011' and j==10)] 
+                 for j in range(11)]
+        distances = [[pairs[i][j] for i in range(len(pairs)-j)] for j in range(11)]
+        
+        ptsG = np.arange(11)
+        if color == 'b': ptsG = [i + .2 for i in ptsG]
+        ptsB = [i + 0 for i in ptsG]
+    
+    elif psfN == '4':
+        distances = ['01', '12', '23', '02', '13', '03']
+        ptsG = [0,0,0,1,1,2]
+        if color == 'b': ptsG = [i + .1 for i in ptsG]
+        ptsB = [i + .05 for i in ptsG]
+        
+    else:
+        assert False, 'please specify one of "4" or "12" for psfN!'
+    
+    # plot g1 and g2 on axes 1 and 2 respectively. 
+    for i in range(2):
+        param = ['g1', 'g2'][i]
+        ax = [ax1, ax2][i]
+        fmt = '^' if color=='a' else 'o'
+
+        if psfN == '4':
+            ax.errorbar(ptsG, [goodSeeing[param][color][j] for j in distances], 
+                        yerr = [np.std(goodBoot[param][color][j]) for j in distances],
+                        fmt=fmt, color='steelblue', capsize=2, alpha=alpha)
+            ax.errorbar(ptsB, [badSeeing[param][color][j] for j in distances],
+                        yerr = [np.std(badBoot[param][color][j]) for j in distances],
+                        fmt=fmt, color='darkorange', capsize=2, alpha=alpha)
+            ax.set_xticks([0,1,2])
+            ax.set_xticklabels(['15','30','45'])
+        if psfN == '12':
+            ax.errorbar(ptsG, [np.mean([goodSeeing[param][color][j] for j in sl]) for sl in distances], 
+                        yerr=[np.std([goodSeeing[param][color][j] for j in sl]) for sl in distances],
+                        fmt=fmt, color='steelblue', capsize=2, alpha=alpha)
+            ax.errorbar(ptsB, [np.mean([badSeeing[param][color][j] for j in sl]) for sl in distances],
+                        yerr=[np.std([badSeeing[param][color][j] for j in sl]) for sl in distances],
+                        fmt=fmt, color='darkorange', capsize=2, alpha=alpha)
+            ax.set_xticks([0,2,4,6,8,10])
+            ax.set_xticklabels(['5','15','25','35','45','55'])
+            
+        if param == 'g1': ax.set_ylabel(r'$\rho$', fontsize=12)
+        else: ax.set_yticklabels([])
+            
+        ax.set_xlabel('$\Delta$ t [s]', fontsize=12)
+        ax.set_title('g$_1$' if param == 'g1' else 'g$_2$', fontsize=12)
+        ax.set_ylim(ylims)
+    return ax1, ax2
+
 def imagePSF(fileN, save, filePath='/global/cscratch1/sd/chebert/rawSpeckles/img_{}_{}.fits'):
+    '''
+    produce (and optionally save) an image of the 60s integrated PSF for data number fileN
+    '''
     hdu = fits.open(filePath.format('a', fileN))
     dataA = hdu[0].data[:,:,::-1]
     hdu.close()
@@ -35,6 +100,15 @@ def imagePSF(fileN, save, filePath='/global/cscratch1/sd/chebert/rawSpeckles/img
     plt.show()
     
 def pearsonEllipse(pearson, ax, label, mean_x, mean_y, scale_x, scale_y, edgecolor, ellipseArgs):
+    '''
+    plotting helper function: adds a correlation ellipse to given axis instance. 
+    Inputs:
+    - a pearson correlation coefficient 
+    - axis instance ax
+    - means/scales of the x and y data
+    - color for the ellipse
+    - optional dict of additional arguments for the ellipse
+    '''
     x_radius = np.sqrt(1 + pearson)
     y_radius = np.sqrt(1 - pearson)
     # define ellipse with given customization
@@ -98,6 +172,9 @@ def corrDict(thing, parameter, bootstrap=False, B=1000, N=61):
     return corrDict
         
 def bootstrapCorr(thing1, thing2, B, N=61):
+    '''
+    Bootstrap a correlation coefficient between thing1 and thing2, sampling B times. Dataset length N.
+    '''
     idx = range(len(thing1))
     samples = []
     for i in range(B):
@@ -106,12 +183,22 @@ def bootstrapCorr(thing1, thing2, B, N=61):
     return samples
     
 def bootstrap(thing, N=61):
+    '''
+    resample dataset thing of length N
+    '''
     return sklearn.utils.resample(thing, replace=True, n_samples=N)
     
 def powerLaw(t, alpha, a, asymptote=0):
+    '''
+    return a power law at points t, with exponent alpha, amplitude a, and an optional asymptote.
+    '''
     return a * t**alpha + asymptote
     
 def fitDropoff(ellipticity, pts=np.logspace(-1.22,1.79,15), expectedAsymptote=None):  
+    '''
+    Fit a powerlaw to ellipticity data and return the best fit parameters. 
+    Optionally can fix the asymptotic value to a nonzero value.
+    '''
     if expectedAsymptote is None:
         expectedAsymptote = np.zeros(2)
         
@@ -131,6 +218,9 @@ def fitDropoff(ellipticity, pts=np.logspace(-1.22,1.79,15), expectedAsymptote=No
     return fitParams
     
 def bootstrapDropoff(ellipticity, B=100, pts=np.logspace(-1.22,1.79,15), expectedAsymptote=None):
+    '''
+    Bootstrap ellipticity dropoff: return set of B best fit parameters from bootstrap samples drawn from data
+    '''
     N = ellipticity.shape[1]
     bootstrapParameters = np.empty((2, B, 2))
     for b in range(B):
@@ -140,6 +230,9 @@ def bootstrapDropoff(ellipticity, B=100, pts=np.logspace(-1.22,1.79,15), expecte
     return bootstrapParameters
 
 def addExpTimeAxis(fig, subplotN, fntsize=12, label=True, tickLabels=True):
+    '''
+    plotting helper: add a log time axis (for plotting accumulating ellipticity data)
+    '''
     logAx = fig.add_subplot(subplotN, label="2", frame_on=False)
     logAx.set_yticks([])
     if label: 
@@ -154,6 +247,11 @@ def addExpTimeAxis(fig, subplotN, fntsize=12, label=True, tickLabels=True):
     return logAx
 
 def makeBoxPlot(fig, subplotN, data, mainColor, meanColor, xLabel=True, hline=True, fliers=False):
+    '''
+    Plotting helper function: add a box plot of data onto subplotN of fig instance. 
+    Configured s.t. whiskers hold 2sigma of the data.
+    Specify colors mainColor and meanColor for the box face and mean markers respectively
+    '''
     ax = fig.add_subplot(subplotN)
     if hline:
         plt.axhline(0, color='gray', linewidth=1, alpha=.75)

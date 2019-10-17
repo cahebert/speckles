@@ -5,6 +5,7 @@ import pandas as pd
 from matplotlib.lines import Line2D
 import analysisHelper as helper
 import seaborn
+from palettable.cmocean.sequential import Amp_20
 
 class psfParameters():
     '''
@@ -95,7 +96,7 @@ class psfParameters():
                                                                  parameter='size', bootstrap=True, B=B)
 
             
-    def plot30sParameters(self, pix, psfN, alpha=0.6, fontsize=12, limits=(-.18,.11), 
+    def plot30sParameters(self, pix, psfN, alpha=0.6, fontsize=12, plotArgs=None, limits=(-.18,.11),
                              figsize=(11,4), save=False, ellipse=False, ellipseArgs=None):
 
         # plot correlation of 30s PSFs
@@ -110,7 +111,7 @@ class psfParameters():
                 # scatter plot the ellipticity component values
                 x = self.parameters['2'][pix][color][param][:,0]
                 y = self.parameters['2'][pix][color][param][:,1]
-                ax.plot(x, y, 'o', color=self.col[color], alpha=alpha)
+                ax.plot(x, y, 'o', color=self.col[color], alpha=alpha, **plotArgs)
                 
                 if ellipse:
                     # sigma of the bootstrap correlation coefficients
@@ -382,7 +383,7 @@ class psfParameters():
         plt.tight_layout()
 
         if save:
-            plt.savefig('../Plots/Results/centroidSpread.png')
+            plt.savefig('../Plots/Results/centroidSpread.png', bbox_to_inches='tight', dpi=200)
             plt.close()
         plt.show()
         
@@ -412,7 +413,7 @@ class psfParameters():
         
         plt.tight_layout()
         if save:
-            plt.savefig('../Plots/Results/centroidSpreadImpact.png', dpi=200)
+            plt.savefig('../Plots/Results/centroidSpreadImpact.png', bbox_to_inches='tight', dpi=200)
             plt.close()
         plt.show()
         
@@ -454,5 +455,68 @@ class psfParameters():
 
         plt.tight_layout()
         if save:
-            plt.savefig(f'../Plots/Results/chromaticity_{pix}.png', bbox_to_inches='tight', dpi=250)
+            plt.savefig(f'../Plots/Results/chromaticity_{pix}.png', bbox_to_inches='tight', dpi=200)
         plt.show()
+        
+        
+    def plotCorrelations(self, psfN, nSplit, save=False, ylims=None, figsize=(10.5,3.5), alpha=1):
+        # check that data is loaded
+        try:
+            self.parameters[psfN]['DSSI']['a']['size']
+        except KeyError:
+            print('loading in correct dataset...')
+            self.loadParameterSet(pix='DSSI', psfN=psfN)
+
+        # sort datasets by size (small-big) using average size between filters
+        idxSort = np.argsort(np.stack([self.parameters[psfN]['DSSI']['a']['size'].mean(axis=1), 
+                                       self.parameters[psfN]['DSSI']['b']['size'].mean(axis=1)]).mean(axis=0))
+        # save size at which we will split the data, for use later
+        sizeSplit = self.parameters[psfN]['DSSI']['a']['size'].mean(axis=1)[idxSort[nSplit]]*.011
+
+        # split data into good and bad seeing samples, and compute correlation coefficients
+        goodSeeing = {c: {ellipticity: self.parameters[psfN]['DSSI'][c][ellipticity][idxSort[:nSplit]] 
+                          for ellipticity in ['g1','g2']} for c in ['a','b']}
+        badSeeing = {c: {ellipticity: self.parameters[psfN]['DSSI'][c][ellipticity][idxSort[nSplit:]] 
+                         for ellipticity in ['g1','g2']} for c in ['a','b']}
+        goodRs = helper.corrDict(goodSeeing, 'ellipticity')
+        badRs = helper.corrDict(badSeeing, 'ellipticity') 
+           
+        # set up figure
+        plt.figure(figsize=figsize)
+        ax1, ax2 = plt.subplot(121), plt.subplot(122)
+
+        # plot 15s binned correlations using helper function
+        if psfN == '4':
+            if ylims is None: ylims=[0,1]
+                
+            goodRBoot = helper.corrDict(goodSeeing, 'ellipticity', bootstrap=True, N=nSplit)
+            badRBoot = helper.corrDict(badSeeing, 'ellipticity', bootstrap=True, N=61-nSplit)
+
+            helper.plotRvT(ax1, ax2, '4', 'a', goodRs, badRs, 
+                           goodBoot=goodRBoot, badBoot=badRBoot, alpha=alpha, ylims=ylims)
+            helper.plotRvT(ax1, ax2, '4', 'b', goodRs, badRs, 
+                           goodBoot=goodRBoot, badBoot=badRBoot, alpha=alpha, ylims=ylims);
+        
+        # or plot 5s correlations
+        if psfN == '12':
+            if ylims is None: ylims=[-.2,1]
+            
+            helper.plotRvT(ax1, ax2, '12', 'a', goodRs, badRs, alpha=alpha, ylims=ylims)
+            helper.plotRvT(ax1, ax2, '12', 'b', goodRs, badRs, alpha=alpha, ylims=ylims);
+
+        # add legends to axes
+        leg1 = [Line2D([0], [0], color='steelblue', alpha=0.8, lw=0, marker='o', label=f'seeing < {sizeSplit:.2f}"'),
+                Line2D([0], [0], color='darkorange', alpha=0.8, lw=0, marker='o', label=f'seeing > {sizeSplit:.2f}"')]
+        ax1.legend(frameon=False, handles=leg1, title='at 692nm:', fontsize=11)
+        
+        leg2 = [Line2D([0], [0], color='gray', lw=0, marker='^', label='692nm'),
+                Line2D([0], [0], color='gray', lw=0, marker='o', label='880nm')]
+        ax2.legend(frameon=False, handles=leg2);
+        
+        plt.tight_layout()
+        # save if desired.
+        if save:
+            plt.savefig(f'../Plots/Results/CorrelationFunctions/{int(60/psfN)}sbins_{sizeSplit:.2f}"cut.png',
+                        bbox_to_inches='tight', dpi=200);
+        else: 
+            plt.show()

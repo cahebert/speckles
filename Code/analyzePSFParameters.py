@@ -5,7 +5,7 @@ import pandas as pd
 from matplotlib.lines import Line2D
 import analysisHelper as helper
 import seaborn
-from palettable.cmocean.sequential import Amp_20
+# from palettable.cmocean.sequential import Amp_20
 
 class psfParameters():
     '''
@@ -27,7 +27,7 @@ class psfParameters():
         
         # plotting settings
 #         self.fontsize = 12
-        self.col = {'a': 'royalblue', 'b': 'indianred'}
+        self.col = {'a': 'royalblue', 'b': 'darkorange'}
         
         self.tickLabels = [0, .7, 1.4, 2.1, 2.8]
         self.ticksLSST = [0, 3.25, 6.5, 9.75, 13]
@@ -111,7 +111,8 @@ class psfParameters():
                 # scatter plot the ellipticity component values
                 x = self.parameters['2'][pix][color][param][:,0]
                 y = self.parameters['2'][pix][color][param][:,1]
-                ax.plot(x, y, 'o', color=self.col[color], alpha=alpha, **plotArgs)
+                marker = 'o' if color=='b' else '^'
+                ax.plot(x, y, marker, color=self.col[color], alpha=alpha, **plotArgs)
                 
                 if ellipse:
                     # sigma of the bootstrap correlation coefficients
@@ -238,7 +239,6 @@ class psfParameters():
         paramStdsZero = paramsAZero.std(axis=1)
         if expectedAsymptote is not None: 
             paramStdsG60 = paramsAG60.std(axis=1)
-
         
         # filter a
         for i in range(2):
@@ -247,7 +247,7 @@ class psfParameters():
             ax, logAx, bp = helper.makeBoxPlot(fig, 211 if i==0 else 212, 
                                                ellipticity[i], 
                                                mainColor=self.col[color], 
-                                               meanColor='navy' if i==0 else 'maroon', 
+                                               meanColor='navy' if i==0 else 'sienna', 
                                                xLabel=False if i==0 else True, 
                                                hline=False)
             # plot the power law
@@ -286,8 +286,8 @@ class psfParameters():
 
         # pair plot of bootstrap fit parameters
         # define some colormaps and other plotting settings
-        r = Amp_20.mpl_colormap
-        b = 'Blues'
+        r = 'YlOrBr'
+        b = 'Greys'
         s = 8
         expected_args = {'linestyles':'dashed', 'linewidths':2, 'alpha':1, 'n_levels':5}
         zero_args={'linewidths':2, 'alpha':0.75, 'n_levels':5}
@@ -323,12 +323,10 @@ class psfParameters():
         g.set_axis_labels(r'exponent $\alpha$', 'amplitude a', fontsize=12);
         if save:
             g.savefig(f'../Plots/Results/cornerDropoffParams_{pix}.png', dpi=200, bbox_to_inches='tight')
-            g.close()
-        
         return
     
-    def plotCentroids(self, centroidFile='../Fits/centroids.p', save=False, alpha=.75,
-                      figsize=(9,4), fontsize=12, ms=5, B=1000, labelPos=(0.04,.92)):
+    def plotCentroids(self, centroidFile='../Fits/centroids.p', save=False, alpha=.85,
+                      figsize=(8,7), fontsize=12, ms=5, B=1000, labelPos=(0.04,.92)):
         '''
         Generate a plot of the impact of centroid motion on PSF parameters.
         '''
@@ -342,45 +340,67 @@ class psfParameters():
         
         # load in centroid and save their x and y second moments
         self.centroidSigmas = {'a':{}, 'b':{}}
-        for (name, color) in [('x','a'),('x','b'),('y','a'),('y','b')]:
-            x = np.array([centroid[name] for (fileN, centroid) in centroidDict[color].items() if fileN!='025'])
-            self.centroidSigmas[color][name] = np.sqrt(np.sum((x-x.mean(axis=1)[:,None])**2, axis=1)/x.shape[1])
+        self.centroidCov = {}
+        for color in ['a','b']:
+            x = np.array([centroid['x'] for (fileN, centroid) in centroidDict[color].items() if fileN!='025'])
+            y = np.array([centroid['y'] for (fileN, centroid) in centroidDict[color].items() if fileN!='025'])
+            self.centroidSigmas[color]['x'] = np.sqrt(np.sum((x-x.mean(axis=1)[:,None])**2, axis=1)/x.shape[1])
+            self.centroidSigmas[color]['y'] = np.sqrt(np.sum((y-y.mean(axis=1)[:,None])**2, axis=1)/y.shape[1])
+            self.centroidCov[color] = np.sum((x-x.mean(axis=1)[:,None])*(y-y.mean(axis=1)[:,None]),
+                                             axis=1)/x.shape[1]
         
-        diffsA = self.centroidSigmas['a']['x'] - self.centroidSigmas['a']['y']
-        diffsB = self.centroidSigmas['b']['x'] - self.centroidSigmas['b']['y']
+        diffsA = self.centroidSigmas['a']['x']**2 - self.centroidSigmas['a']['y']**2
+        diffsB = self.centroidSigmas['b']['x']**2 - self.centroidSigmas['b']['y']**2
 
-        plt.figure(figsize=figsize)
+        fig = plt.figure(figsize=figsize)
+        grid = plt.GridSpec(2,2, wspace=.075, hspace=.075, top=.94)
+        fig.suptitle('impact of PSF centroid second moments on ellipticity', fontsize=fontsize+2)
         
         for i in range(2):
             param = ['g1','g2'][i]
-            # calculate correlation coefficients
-            rho_a = np.corrcoef(self.parameters['15'][pix]['a'][param][:,-1], diffsA, rowvar=False)[0,-1]
-            rho_b = np.corrcoef(self.parameters['15'][pix]['b'][param][:,-1], diffsB, rowvar=False)[0,-1]
+            y_a = self.parameters['15'][pix]['a'][param][:,-1]
+            y_b = self.parameters['15'][pix]['b'][param][:,-1]
+                        
+            for j in [0,1]:
+                x_a = [diffsA, self.centroidCov['a']][j]
+                x_b = [diffsB, self.centroidCov['b']][j]
+                
+                # calculate correlation coefficients
+                rho_a = np.corrcoef(y_a, x_a, rowvar=False)[0,-1]
+                rho_b = np.corrcoef(y_b, x_b, rowvar=False)[0,-1]
 
-            # bootstrap uncertainties for these (should I be saving?)
-            err_a = np.std(helper.bootstrapCorr(self.parameters['15'][pix]['a'][param][:,-1], diffsA, B=B))
-            err_b = np.std(helper.bootstrapCorr(self.parameters['15'][pix]['b'][param][:,-1], diffsB, B=B))
+                # bootstrap uncertainties for these 
+                err_a = np.std(helper.bootstrapCorr(y_a, x_a, B=B))
+                err_b = np.std(helper.bootstrapCorr(y_b, x_b, B=B))
+
+                ax = plt.subplot(grid[i,j])
+                # plot g_i vs difference of second moments for both filters
+                ax.plot(x_a, y_a, '^', ms=ms, color=self.col['a'], alpha=alpha)
+                ax.plot(x_b, y_b, 'o', ms=ms, color=self.col['b'], alpha=alpha)
             
-            ax = plt.subplot(1,2,i+1)
-            # plot g_i vs difference of second moments for both filters
-            plt.plot(diffsA, self.parameters['15'][pix]['a'][param][:,-1], 'o', ms=ms,
-                     color=self.col['a'], alpha=alpha, label=fr'$\rho$={rho_a:.2f}$\pm${err_a:.2f}')
-            plt.plot(diffsB, self.parameters['15'][pix]['b'][param][:,-1], 'o', ms=ms,
-                     color=self.col['b'], alpha=alpha, label=fr'$\rho$={rho_b:.2f}$\pm${err_b:.2f}')
-            # add text with correlation coefficients + bootstrapped errors (color coded text)
-            ax.text(labelPos[0], labelPos[1]-.025, fr'$\rho$={rho_a:.2f}$\pm${err_a:.2f}', 
-                    color=self.col['a'], transform=ax.transAxes,
-                   verticalalignment='top', horizontalalignment='left')
-            ax.text(labelPos[0], labelPos[1], fr'$\rho$={rho_b:.2f}$\pm${err_b:.2f}', 
-                    color=self.col['b'], transform=ax.transAxes)
-            # add lines through along 0s
-            plt.axhline(0, linestyle='--', color='lightgray')
-            plt.axvline(0, linestyle='--', color='lightgray')
-            # axis labels
-            plt.ylabel('g$_1$' if i==0 else 'g$_2$', fontsize=fontsize)
-            plt.xlabel('$\sigma_x$ - $\sigma_y$', fontsize=fontsize)
+                # add text with correlation coefficients + bootstrapped errors (color coded text)
+                labelA = fr'$\rho$={rho_a:.2f}$\pm${err_a:.2f}'
+                labelB = fr'$\rho$={rho_b:.2f}$\pm${err_b:.2f}'
+                ax.text(labelPos[0], labelPos[1], labelA, color=self.col['a'], transform=ax.transAxes, fontsize=12)
+                ax.text(labelPos[0], labelPos[1]-.075, labelB, color=self.col['b'], transform=ax.transAxes, fontsize=12)
 
-        plt.tight_layout()
+                # add lines through along 0s
+                ax.axhline(0, linestyle='--', color='lightgray')
+                ax.axvline(0, linestyle='--', color='lightgray')
+                
+                # axis labels and ticks
+                if i==0 and j==0: 
+                    ax.set_ylabel('g$_1$', fontsize=fontsize)
+                    ax.set_xticklabels([]), ax.set_xticks([])
+                if i==0 and j==1: 
+                    ax.set_xticklabels([]), ax.set_xticks([])
+                    ax.set_yticklabels([]), ax.set_yticks([])
+                if i==1 and j==0:
+                    ax.set_ylabel('g$_2$', fontsize=fontsize)
+                    ax.set_xlabel('$\sigma_x^2$ - $\sigma_y^2$', fontsize=fontsize)
+                if i==1 and j==1:
+                    ax.set_yticklabels([]), ax.set_yticks([])
+                    ax.set_xlabel('$\sigma_{xy}^2$', fontsize=fontsize)
 
         if save:
             plt.savefig('../Plots/Results/centroidSpread.png', bbox_to_inches='tight', dpi=200)
@@ -459,7 +479,8 @@ class psfParameters():
         plt.show()
         
         
-    def plotCorrelations(self, psfN, nSplit, save=False, ylims=None, figsize=(10.5,3.5), alpha=1):
+    def plotCorrelations(self, psfN, nSplit, nSplit2=None, save=False, 
+                         ylims=None, figsize=(10.5,3.5), colors=None, alpha=1):
         # check that data is loaded
         try:
             self.parameters[psfN]['DSSI']['a']['size']
@@ -467,16 +488,24 @@ class psfParameters():
             print('loading in correct dataset...')
             self.loadParameterSet(pix='DSSI', psfN=psfN)
 
+        if colors is None:
+            colors=['steelblue','darkorange']
+            
         # sort datasets by size (small-big) using average size between filters
         idxSort = np.argsort(np.stack([self.parameters[psfN]['DSSI']['a']['size'].mean(axis=1), 
                                        self.parameters[psfN]['DSSI']['b']['size'].mean(axis=1)]).mean(axis=0))
         # save size at which we will split the data, for use later
         sizeSplit = self.parameters[psfN]['DSSI']['a']['size'].mean(axis=1)[idxSort[nSplit]]*.011
-
+        if nSplit2 is not None:
+            sizeSplit2 = self.parameters[psfN]['DSSI']['a']['size'].mean(axis=1)[idxSort[nSplit2]]*.011
+        else: 
+            nSplit2 = nSplit
+            sizeSplit2 = sizeSplit
+            
         # split data into good and bad seeing samples, and compute correlation coefficients
         goodSeeing = {c: {ellipticity: self.parameters[psfN]['DSSI'][c][ellipticity][idxSort[:nSplit]] 
                           for ellipticity in ['g1','g2']} for c in ['a','b']}
-        badSeeing = {c: {ellipticity: self.parameters[psfN]['DSSI'][c][ellipticity][idxSort[nSplit:]] 
+        badSeeing = {c: {ellipticity: self.parameters[psfN]['DSSI'][c][ellipticity][idxSort[nSplit2:]] 
                          for ellipticity in ['g1','g2']} for c in ['a','b']}
         goodRs = helper.corrDict(goodSeeing, 'ellipticity')
         badRs = helper.corrDict(badSeeing, 'ellipticity') 
@@ -490,23 +519,23 @@ class psfParameters():
             if ylims is None: ylims=[0,1]
                 
             goodRBoot = helper.corrDict(goodSeeing, 'ellipticity', bootstrap=True, N=nSplit)
-            badRBoot = helper.corrDict(badSeeing, 'ellipticity', bootstrap=True, N=61-nSplit)
+            badRBoot = helper.corrDict(badSeeing, 'ellipticity', bootstrap=True, N=61-nSplit2)
 
-            helper.plotRvT(ax1, ax2, '4', 'a', goodRs, badRs, 
+            helper.plotRvT(ax1, ax2, '4', 'a', goodRs, badRs, colors,
                            goodBoot=goodRBoot, badBoot=badRBoot, alpha=alpha, ylims=ylims)
-            helper.plotRvT(ax1, ax2, '4', 'b', goodRs, badRs, 
+            helper.plotRvT(ax1, ax2, '4', 'b', goodRs, badRs, colors,
                            goodBoot=goodRBoot, badBoot=badRBoot, alpha=alpha, ylims=ylims);
         
         # or plot 5s correlations
         if psfN == '12':
             if ylims is None: ylims=[-.2,1]
             
-            helper.plotRvT(ax1, ax2, '12', 'a', goodRs, badRs, alpha=alpha, ylims=ylims)
-            helper.plotRvT(ax1, ax2, '12', 'b', goodRs, badRs, alpha=alpha, ylims=ylims);
+            helper.plotRvT(ax1, ax2, '12', 'a', goodRs, badRs, colors, alpha=alpha, ylims=ylims)
+            helper.plotRvT(ax1, ax2, '12', 'b', goodRs, badRs, colors, alpha=alpha, ylims=ylims);
 
         # add legends to axes
-        leg1 = [Line2D([0], [0], color='steelblue', alpha=0.8, lw=0, marker='o', label=f'seeing < {sizeSplit:.2f}"'),
-                Line2D([0], [0], color='darkorange', alpha=0.8, lw=0, marker='o', label=f'seeing > {sizeSplit:.2f}"')]
+        leg1 = [Line2D([0], [0], color=colors[0], alpha=0.8, lw=0, marker='o', label=f'seeing < {sizeSplit:.2f}"'),
+                Line2D([0], [0], color=colors[1], alpha=0.8, lw=0, marker='o', label=f'seeing > {sizeSplit2:.2f}"')]
         ax1.legend(frameon=False, handles=leg1, title='at 692nm:', fontsize=11)
         
         leg2 = [Line2D([0], [0], color='gray', lw=0, marker='^', label='692nm'),
@@ -516,7 +545,7 @@ class psfParameters():
         plt.tight_layout()
         # save if desired.
         if save:
-            plt.savefig(f'../Plots/Results/CorrelationFunctions/{int(60/psfN)}sbins_{sizeSplit:.2f}"cut.png',
+            plt.savefig(f'../Plots/Results/CorrelationFunctions/{int(60/int(psfN))}sbins_{sizeSplit:.2f}"cut.png',
                         bbox_to_inches='tight', dpi=200);
         else: 
             plt.show()

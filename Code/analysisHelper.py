@@ -6,7 +6,7 @@ from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
 from astropy.io import fits
     
-def plotRvT(ax1, ax2, psfN, color, goodSeeing, badSeeing, goodBoot=None, badBoot=None,
+def plotRvT(ax1, ax2, psfN, color, goodSeeing, badSeeing, colors, goodBoot=None, badBoot=None,
             ylims=[0,.9], alpha=1):
     '''
     Meant as a helper function to be called from the analysis class. 
@@ -44,19 +44,19 @@ def plotRvT(ax1, ax2, psfN, color, goodSeeing, badSeeing, goodBoot=None, badBoot
         if psfN == '4':
             ax.errorbar(ptsG, [goodSeeing[param][color][j] for j in distances], 
                         yerr = [np.std(goodBoot[param][color][j]) for j in distances],
-                        fmt=fmt, color='steelblue', capsize=2, alpha=alpha)
+                        fmt=fmt, color=colors[0], capsize=2, alpha=alpha)
             ax.errorbar(ptsB, [badSeeing[param][color][j] for j in distances],
                         yerr = [np.std(badBoot[param][color][j]) for j in distances],
-                        fmt=fmt, color='darkorange', capsize=2, alpha=alpha)
+                        fmt=fmt, color=colors[1], capsize=2, alpha=alpha)
             ax.set_xticks([0,1,2])
             ax.set_xticklabels(['15','30','45'])
         if psfN == '12':
             ax.errorbar(ptsG, [np.mean([goodSeeing[param][color][j] for j in sl]) for sl in distances], 
                         yerr=[np.std([goodSeeing[param][color][j] for j in sl]) for sl in distances],
-                        fmt=fmt, color='steelblue', capsize=2, alpha=alpha)
+                        fmt=fmt, color=colors[0], capsize=2, alpha=alpha)
             ax.errorbar(ptsB, [np.mean([badSeeing[param][color][j] for j in sl]) for sl in distances],
                         yerr=[np.std([badSeeing[param][color][j] for j in sl]) for sl in distances],
-                        fmt=fmt, color='darkorange', capsize=2, alpha=alpha)
+                        fmt=fmt, color=colors[1], capsize=2, alpha=alpha)
             ax.set_xticks([0,2,4,6,8,10])
             ax.set_xticklabels(['5','15','25','35','45','55'])
             

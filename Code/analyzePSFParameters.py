@@ -34,7 +34,10 @@ class psfParameters():
         self.ticksDSSI = [0, 64, 128, 192, 256]
             
     def loadParameterSet(self, psfN, pix, filePath='Fits/{}pixels/{}Filter/img{}_{}psfs.p'):
-
+        '''
+        Load in a set of HSM parameters corresponding to a particular pixel size and data bins. 
+        filePath is path (from self.base) of (formattable) name of pickle file containing HSM outputs.
+        '''
         for color in ['a', 'b']:
             self.parameters[psfN][pix][color] = {} 
             
@@ -57,7 +60,8 @@ class psfParameters():
                     print(f'dataset {self.fileNumbers[i]} has an HSM error in moments estimation!')
                 else:
                     shears[:, i-unusedFiles, :] = np.array([[hsmResult[j].observed_shape.g1, 
-                                                             hsmResult[j].observed_shape.g2] for j in range(int(psfN))]).T
+                                                             hsmResult[j].observed_shape.g2] 
+                                                            for j in range(int(psfN))]).T
                     sizes[i-unusedFiles, :] = np.array([hsmResult[j].moments_sigma for j in range(int(psfN))])
                     rho4s[i-unusedFiles, :] = np.array([hsmResult[j].moments_rho4 for j in range(int(psfN))])
             
@@ -73,12 +77,17 @@ class psfParameters():
             self.parameters[psfN][pix][color]['rho4'] = rho4s
             
     def loadAllParameters(self, filePath='Fits/{}pixels/{}Filter/img{}_{}psfs.p'):
-        
+        '''
+        Load all parameter sets by calling self.loadParameterSet()
+        '''
         for psfN in ['2', '4', '12', '15']:
             for pix in ['DSSI', 'LSST']:
                 self.loadParameterSet(psfN, pix)
         
     def analyzeBinnedParameters(self, pix, B=1000):
+        '''
+        For all binned data, compute parameter correlations coefficients and (if not 5s bins) bootstrap errors
+        '''
         for psfN in ['2', '4', '12']:
             if 'a' not in self.parameters[psfN][pix].keys():
                 self.loadParameterSet(psfN, pix)
@@ -86,19 +95,24 @@ class psfParameters():
         for psfN in ['2', '4', '12']:
             # Compute correlation coefficients for g1 and g2 in both filters
             self.R[psfN][pix] = helper.corrDict(self.parameters[psfN][pix], parameter='ellipticity')
-            # Bootstrap correlation coefficients for g1 and g2 in both filters
-            self.bootstrapR[psfN][pix] = helper.corrDict(self.parameters[psfN][pix], 
-                                                         parameter='ellipticity', bootstrap=True, B=B)
+            
+            if psfN != '12':
+                # Bootstrap correlation coefficients for g1 and g2 in both filters
+                self.bootstrapR[psfN][pix] = helper.corrDict(self.parameters[psfN][pix], 
+                                                             parameter='ellipticity', bootstrap=True, B=B)
             
             # Repeat for size parameter
             self.R[psfN][pix]['size'] = helper.corrDict(self.parameters[psfN][pix], parameter='size')
-            self.bootstrapR[psfN][pix]['size'] = helper.corrDict(self.parameters[psfN][pix], 
-                                                                 parameter='size', bootstrap=True, B=B)
+            if psfN != '12':
+                self.bootstrapR[psfN][pix]['size'] = helper.corrDict(self.parameters[psfN][pix], 
+                                                                     parameter='size', bootstrap=True, B=B)
 
             
     def plot30sParameters(self, pix, psfN, alpha=0.6, fontsize=12, plotArgs=None, limits=(-.18,.11),
                              figsize=(11,4), save=False, ellipse=False, ellipseArgs=None):
-
+        '''
+        Plot 30s PSF parameters and their correlation ellipses.
+        '''
         # plot correlation of 30s PSFs
         plt.figure(figsize=figsize)
         ax1 = plt.subplot(131)
@@ -139,6 +153,10 @@ class psfParameters():
 
             
     def plotEComps(self, pix, figsize=(10,5), limits=[-.28,.24], fontsize=12, save=False):
+        '''
+        Scatter plot PSF ellipticity components against each other for 4 exposure times.
+        Illustration of the clouds of parameters shrinking with exposure time
+        '''
         try:
             e1 = np.array([self.parameters['15'][pix]['a']['g1'], self.parameters['15'][pix]['b']['g1']])
             e2 = np.array([self.parameters['15'][pix]['a']['g2'], self.parameters['15'][pix]['b']['g2']])
@@ -181,6 +199,11 @@ class psfParameters():
             plt.close(fig)
     
     def analyzeEMag(self, pix, Nboot=1000, expectedAsymptote=None, save=False, plot=True):
+        '''
+        Fit the ellipticity dropoff power law, and bootstrap for uncertainties. 
+        Optional parameter expectedAsymptote can force a nonzero asymptotic value of |g|. 
+            This should be None, or a tuple of values for filter a and b respectively.
+        '''
         try:
             ellipticity = np.array([np.sqrt(self.parameters['15'][pix]['a']['g1']**2 +
                                             self.parameters['15'][pix]['a']['g2']**2),
@@ -216,6 +239,9 @@ class psfParameters():
     
     def plotEMag(self, pix, ellipticity=None, figsize=(8, 7), save=False, fontsize=12, 
                  limits=[-0.01,.165], pairAlpha=0.15, expectedAsymptote=None):
+        '''
+        Plot ellipciticy dropoff computed using analyzeEMag above
+        '''
         # load some data, check it's in the class
         try:
             paramsAZero = self.bootstrapE[pix]['zero'] 
@@ -438,6 +464,9 @@ class psfParameters():
         plt.show()
         
     def chromaticityPlots(self, pix='DSSI', figsize=(7,4), plotOutlier=True, color='darkcyan', ms=5, save=False):
+        '''
+        Plot the values of the chromatic exponent against PSF size.
+        '''
         sizeA = self.parameters['15'][pix]['a']['size'][:,-1]
         sizeB = self.parameters['15'][pix]['b']['size'][:,-1]
         lamA = 692
@@ -481,6 +510,10 @@ class psfParameters():
         
     def plotCorrelations(self, psfN, nSplit, nSplit2=None, save=False, 
                          ylims=None, figsize=(10.5,3.5), colors=None, alpha=1):
+        '''
+        Plot correlation function for data bins. 
+        Specify 5 or 15s bins, and how many data points to include in each seeing split
+        '''
         # check that data is loaded
         try:
             self.parameters[psfN]['DSSI']['a']['size']

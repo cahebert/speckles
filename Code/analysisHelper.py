@@ -68,9 +68,9 @@ def plotRvT(ax1, ax2, psfN, color, goodSeeing, badSeeing, colors, goodBoot=None,
         ax.set_ylim(ylims)
     return ax1, ax2
 
-def imagePSF(fileN, save, filePath='/global/cscratch1/sd/chebert/rawSpeckles/img_{}_{}.fits'):
+def imagePSF(fileN, save, expTime=[0,1000], filePath='/global/cscratch1/sd/chebert/rawSpeckles/img_{}_{}.fits'):
     '''
-    produce (and optionally save) an image of the 60s integrated PSF for data number fileN
+    produce (and optionally save) an image of the 60s (or other) integrated PSF for data number fileN
     '''
     hdu = fits.open(filePath.format('a', fileN))
     dataA = hdu[0].data[:,:,::-1]
@@ -81,14 +81,14 @@ def imagePSF(fileN, save, filePath='/global/cscratch1/sd/chebert/rawSpeckles/img
     
     plt.figure(figsize=(6,3))
     ax=plt.subplot(121)
-    plt.imshow(dataA.mean(axis=0), origin='lower', cmap='plasma')
+    plt.imshow(dataA[expTime[0]:expTime[1]].mean(axis=0), origin='lower', cmap='plasma')
     plt.xticks([0, 64, 128, 192, 256], [0, .7, 1.4, 2.1, 2.8])
     plt.yticks([0, 64, 128, 192, 256], [0, .7, 1.4, 2.1, 2.8])
     plt.ylabel('[arcsec]')
     plt.xlabel('[arcsec]')
     ax.text(5, 235, '692nm', color='gold', fontsize=12)
     ax=plt.subplot(122)
-    plt.imshow(dataB.mean(axis=0), origin='lower', cmap='plasma')
+    plt.imshow(dataB[expTime[0]:expTime[1]].mean(axis=0), origin='lower', cmap='plasma')
     plt.xticks([0, 64, 128, 192, 256], [0, .7, 1.4, 2.1, 2.8])
     plt.yticks([0, 64, 128, 192, 256], [])
     ax.text(5, 235, '880nm', color='gold', fontsize=12)
@@ -188,45 +188,67 @@ def bootstrap(thing, N=61):
     '''
     return sklearn.utils.resample(thing, replace=True, n_samples=N)
     
-def powerLaw(t, alpha, a, asymptote=0):
+def powerLaw(t, p, asymptote=0):
     '''
     return a power law at points t, with exponent alpha, amplitude a, and an optional asymptote.
     '''
-    return a * t**alpha + asymptote
+    if len(p) == 2:
+        return p[0] * t**p[1] + asymptote
+    elif len(p) == 3:
+        return np.array([p[0] if time<p[2] else p[0] * (time-p[2])**p[1] for time in t]) + asymptote
     
-def fitDropoff(ellipticity, pts=np.logspace(-1.22,1.79,15), expectedAsymptote=None):  
+# def powerLawDelay(t, td, alpha, a, asymptote=0):
+#     '''
+#     return a power law at points t, with exponent alpha, amplitude a, and an optional asymptote.
+#     '''
+#     return np.array([a if time<td else a * (time-td)**alpha for time in t]) + asymptote
+    
+def fitDropoff(ellipticity, pts=np.logspace(-1.22,1.79,15), expectedAsymptote=None, delay=False):  
     '''
     Fit a powerlaw to ellipticity data and return the best fit parameters. 
-    Optionally can fix the asymptotic value to a nonzero value.
+    Optionally can:
+    - fix the asymptotic value to a nonzero value
+    - have a delay in time before the dropoff starts
     '''
     if expectedAsymptote is None:
         expectedAsymptote = np.zeros(2)
+       
+    def powerLaw1(t, *p):
+        return powerLaw(t, p, asymptote=expectedAsymptote[0])
+    def powerLaw2(t, *p):
+        return powerLaw(t, p, asymptote=expectedAsymptote[1])
+
+    if delay:
+        fitParams = np.zeros((2,3))
+        p0 = [0.5, -.2, -1.22]
+        bounds = [[-np.inf,-1, -1.22], [np.inf, 0, 1.79]]
+    else:
+        fitParams = np.zeros((2,2))
+        p0=[0.5, -.2]
+        bounds=[[-np.inf, -1], [np.inf, 0]]
         
-    def powerLawA(t, alpha, a):
-        return powerLaw(t, alpha, a, expectedAsymptote[0])
-    def powerLawB(t, alpha, a):
-        return powerLaw(t, alpha, a, expectedAsymptote[1])
-    
-    fitParams = np.zeros((2,2))
     for i in range(2):
         if i == 0:
-            fun = powerLawA
+            fun = powerLaw1
         else: 
-            fun = powerLawB
-        fitParams[i], _ = curve_fit(fun, xdata=pts, ydata=ellipticity[i], p0=[-.2, 0.5], 
-                                    bounds=[[-1,-np.inf], [0, np.inf]])
+            fun = powerLaw2
+        fitParams[i], _ = curve_fit(fun, xdata=pts, ydata=ellipticity[i], p0=p0, bounds=bounds)
+    
     return fitParams
     
-def bootstrapDropoff(ellipticity, B=100, pts=np.logspace(-1.22,1.79,15), expectedAsymptote=None):
+def bootstrapDropoff(ellipticity, B=100, pts=np.logspace(-1.22,1.79,15), expectedAsymptote=None, delay=False):
     '''
     Bootstrap ellipticity dropoff: return set of B best fit parameters from bootstrap samples drawn from data
     '''
     N = ellipticity.shape[1]
-    bootstrapParameters = np.empty((2, B, 2))
+    if delay:
+        bootstrapParameters = np.empty((2, B, 3))
+    else:
+        bootstrapParameters = np.empty((2, B, 2))
     for b in range(B):
         samples = [bootstrap(ellipticity[i]) for i in range(2)]
         y = np.mean(samples, axis=1)
-        bootstrapParameters[:, b, :] = fitDropoff(y, expectedAsymptote=expectedAsymptote)
+        bootstrapParameters[:, b, :] = fitDropoff(y, expectedAsymptote=expectedAsymptote, delay=delay)
     return bootstrapParameters
 
 def addExpTimeAxis(fig, subplotN, fntsize=12, label=True, tickLabels=True):

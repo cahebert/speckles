@@ -53,8 +53,11 @@ def extractPSFParameters(args):
     
     for fileNumber in acceptedFileNumbers:
         for color in args.filters:
+            if args.source == 'Zorro': colorL = 'b' if color==562 else 'r' 
+            if args.source == 'DSSI': colorL = 'b' if color==692 else 'a'
+                
             # load in raw speckle data from fits file
-            hdu = fits.open(args.dataDir + args.fileNameFormat.format(color, fileNumber))
+            hdu = fits.open(args.dataDir + args.fileNameFormat.format(fileNumber, colorL))
             data = hdu[0].data.astype('float64')
             header = hdu[0].header
             hdu.close()
@@ -84,26 +87,26 @@ def extractPSFParameters(args):
             # calculate 200 centroids throughout the dataset, each on a stack of 5 exposures
             centroidDict[color][fileNumber] = imgHelper.calculateCentroids(data, N=200, subtract=True)
         
-            # accumulate stacked PSFs for DSSI pixels
-            dssi_series = []
+            # accumulate stacked PSFs for speckle pixels
+            speckle_series = []
             
             # 12x5s stacks
-            dssi_series.append( imgHelper.accumulateExposures(sequence=data, numBins=12,
+            speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=12,
                                                               subtract=False, 
                                                               maskDict=maskDict,
                                                               overRide=True) )
             # 4x15s stacks
-            dssi_series.append( imgHelper.accumulateExposures(sequence=data, numBins=4,
+            speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=4,
                                                               subtract=False, 
                                                               maskDict=maskDict) )
             # 2x30s stacks
-            dssi_series.append( imgHelper.accumulateExposures(sequence=data, numBins=2,
+            speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=2,
                                                               subtract=False, 
                                                               maskDict=maskDict) )
             # full 60s stack: save 15 images at 2^N exposure time
             indices = [int(np.round(i)) - 1 for i in np.logspace(0, 3, 15)]
 
-            dssi_series.append( imgHelper.accumulateExposures(sequence=data, 
+            speckle_series.append( imgHelper.accumulateExposures(sequence=data, 
                                                               subtract=False, 
                                                               maskDict=maskDict,
                                                               indices=indices) )
@@ -112,8 +115,8 @@ def extractPSFParameters(args):
 #             # if no mask for dataset, easy: just spatially bin the already processed sequences
 #             if maskDict is None:
 #                 lsst_series = [
-#                     [np.array([imgHelper.spatialBinToLSST(img) for img in dssi_series[i][0]]), 0] 
-#                     for i in range(len(dssi_series))]
+#                     [np.array([imgHelper.spatialBinToLSST(img) for img in speckle_series[i][0]]), 0] 
+#                     for i in range(len(speckle_series))]
 
 #             # if there are masks, then have to spatially bin first (using masks) and then reprocess.
 #             else: 
@@ -138,10 +141,10 @@ def extractPSFParameters(args):
             names = ['12', '4', '2', '15']
             ## extract PSF parameters
             for i in range(len(names)):
-                # for DSSI
-                savePathDSSI = args.baseDir + args.savePath.format('DSSI', color, fileNumber, names[i])
-                imgHelper.estimateMomentsHSM(dssi_series[i][0], maskDict=dssi_series[i][1], 
-                                          saveDict={'save':True, 'path':savePathDSSI})
+                # for Speckle
+                savePathSpeckle = args.baseDir + args.savePath.format(args.source, color, fileNumber, names[i])
+                imgHelper.estimateMomentsHSM(speckle_series[i][0], maskDict=speckle_series[i][1], 
+                                          saveDict={'save':True, 'path':savePathSpeckle})
 #                 # for LSST
 #                 savePathLSST = args.baseDir + args.savePath.format('LSST', color, fileNumber, names[i])
 #                 imgHelper.estimateMomentsHSM(lsst_series[i][0], max_ashift=15, 
@@ -152,10 +155,10 @@ def extractPSFParameters(args):
     with open(args.baseDir + f'Fits/{args.source}centroids.p', 'wb') as file:
         pickle.dump(centroidDict, file)
 
-    if args.source == 'Zorro':
-        # save the dict of all header fits to a pickle file
-        with open(args.baseDir + f'Code/{args.source}headers.p', 'wb') as file:
-            pickle.dump(headerInfo, file)
+#     if args.source == 'Zorro':
+#         # save the dict of all header fits to a pickle file
+#         with open(args.baseDir + f'Code/{args.source}headers.p', 'wb') as file:
+#             pickle.dump(headerInfo, file)
     
     
 if __name__ == '__main__':

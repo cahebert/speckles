@@ -14,13 +14,16 @@ class psfParameters():
                  fileNumbers='Code/{}fileNumbers.txt', 
                  baseDir='/global/homes/c/chebert/SpecklePSF/', 
                  filters=[692, 880],
-                 pScale=.0096,
                  plottingColors=['royalblue','darkorange']):
         '''
         Initialize an instance of this class for analyzing HSM outpute for speckle images.
         This class is associated with datasets from two wavelengths at a given pixel scale
         '''
-        self.scale = pScale
+        if source=='Zorro':
+            self.scale = {self.filters[0]: .00992, self.filters[1]: .01095}
+        else:
+            self.scale = {self.filters[0]: .011, self.filters[1]: .011}
+            
         self.filters = filters
         self.source = source
         
@@ -74,7 +77,7 @@ class psfParameters():
             self.parameters[psfN][color]['g1'] = shears[0]
             self.parameters[psfN][color]['g2'] = shears[1]
             self.parameters[psfN][color]['g'] = np.sqrt(shears[0]**2 + shears[1]**2)
-            self.parameters[psfN][color]['size'] = sizes * 2.355
+            self.parameters[psfN][color]['size'] = sizes * 2.355 * self.scale[color]
             self.parameters[psfN][color]['rho4'] = rho4s
             
             if unusedFiles != 0:
@@ -138,8 +141,8 @@ class psfParameters():
                                            x.mean(), y.mean(), x.std(), y.std(),
                                            edgecolor=self.colors[color], ellipseArgs=ellipseArgs)
                     
-            ax.set_xlabel('FWHM (30s) [pixels]' if param=='size' else param + ' (30s)', fontsize=fontsize)
-            ax.set_ylabel('FWHM (next 30s) [pixels]' if param=='size' else param + ' (next 30s)', fontsize=fontsize)
+            ax.set_xlabel('FWHM (30s) [arcsec]' if param=='size' else param + ' (30s)', fontsize=fontsize)
+            ax.set_ylabel('FWHM (next 30s) [arcsec]' if param=='size' else param + ' (next 30s)', fontsize=fontsize)
             lims = ax.axis(option='equal')
             lims = np.min(lims), np.max(lims)
             ax.set(xlim=lims, ylim=lims)
@@ -469,7 +472,7 @@ class psfParameters():
 #             b = np.hstack([b, bOutlier])
 #             sizeA = np.hstack([size1, s1])
 
-        plt.plot(size1*self.scale, b, 'o', color=color, ms=ms)
+        plt.plot(size1, b, 'o', color=color, ms=ms)
         plt.xlabel(f'FWHM$_{self.filters[0]}nm$ [arcsec]', fontsize=12)
         plt.ylabel('b', fontsize=12)
         # Kolmogorov prediction: sizeA = (lamA/lamB)^b * sizeB

@@ -271,7 +271,7 @@ def calculateCentroids(imgSeries, N=200, subtract=False):
     return {'x': centroids[0], 'y': centroids[1]}
     
 def estimateMomentsHSM(images, maskDict=None, saveDict={'save':True, 'path':None}, 
-                       strict=True, subtract=False, maxIters=400, 
+                       strict=False, subtract=False, maxIters=400, 
                        max_ashift=100, max_amoment=5.0e5):
     '''
     Estimate the moments of the PSF images using HSM.

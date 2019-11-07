@@ -43,8 +43,9 @@ def extractPSFParameters(args):
             gains_e = dict(pickle.load(file))
                                   
     elif args.source == 'Zorro':
-        with open(args.baseDir + args.masks, 'rb') as file:
-            pixelMasks = pickle.load(file)        
+        acceptedFileNumbers = inputFileNumbers
+#         with open(args.baseDir + args.masks, 'rb') as file:
+#             pixelMasks = pickle.load(file)        
     else:
         pixelMasks = None
     
@@ -57,10 +58,18 @@ def extractPSFParameters(args):
             if args.source == 'DSSI': colorL = 'b' if color==692 else 'a'
                 
             # load in raw speckle data from fits file
-            hdu = fits.open(args.dataDir + args.fileNameFormat.format(fileNumber, colorL))
-            data = hdu[0].data.astype('float64')
-            header = hdu[0].header
-            hdu.close()
+            try:
+                hdu = fits.open(args.dataDir + args.fileNameFormat.format(fileNumber, colorL))
+                data = hdu[0].data.astype('float64')
+                header = hdu[0].header
+                hdu.close()
+            except FileNotFoundError:
+                print(f'file {fileNumber}{colorL} not found!')
+                print(f'looked for it at: {args.dataDir + args.fileNameFormat.format(fileNumber, colorL)}')
+                continue
+            except IOError:
+                print(f'hmm, something weird happened when opening {fileNumber}{colorL}. Perhaps could not decompress?')
+                continue
             
             # apply gain and subtract background
             if args.source == 'DSSI':
@@ -74,6 +83,8 @@ def extractPSFParameters(args):
                     maskDict = None
                     
             elif args.source == 'Zorro':
+                if color == 832:
+                    data = data[:,:,::-1]
                 try:
                     maskDict = pixelMasks[f'img_{color}_{fileNumber}.fits']
                 except:
@@ -87,29 +98,29 @@ def extractPSFParameters(args):
             # calculate 200 centroids throughout the dataset, each on a stack of 5 exposures
             centroidDict[color][fileNumber] = imgHelper.calculateCentroids(data, N=200, subtract=True)
         
-            # accumulate stacked PSFs for speckle pixels
-            speckle_series = []
+#             # accumulate stacked PSFs for speckle pixels
+#             speckle_series = []
             
-            # 12x5s stacks
-            speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=12,
-                                                              subtract=False, 
-                                                              maskDict=maskDict,
-                                                              overRide=True) )
-            # 4x15s stacks
-            speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=4,
-                                                              subtract=False, 
-                                                              maskDict=maskDict) )
-            # 2x30s stacks
-            speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=2,
-                                                              subtract=False, 
-                                                              maskDict=maskDict) )
-            # full 60s stack: save 15 images at 2^N exposure time
-            indices = [int(np.round(i)) - 1 for i in np.logspace(0, 3, 15)]
+#             # 12x5s stacks
+#             speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=12,
+#                                                               subtract=False, 
+#                                                               maskDict=maskDict,
+#                                                               overRide=True) )
+#             # 4x15s stacks
+#             speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=4,
+#                                                               subtract=False, 
+#                                                               maskDict=maskDict) )
+#             # 2x30s stacks
+#             speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=2,
+#                                                               subtract=False, 
+#                                                               maskDict=maskDict) )
+#             # full 60s stack: save 15 images at 2^N exposure time
+#             indices = [int(np.round(i)) - 1 for i in np.logspace(0, 3, 15)]
 
-            speckle_series.append( imgHelper.accumulateExposures(sequence=data, 
-                                                              subtract=False, 
-                                                              maskDict=maskDict,
-                                                              indices=indices) )
+#             speckle_series.append( imgHelper.accumulateExposures(sequence=data, 
+#                                                               subtract=False, 
+#                                                               maskDict=maskDict,
+#                                                               indices=indices) )
 
 #             ## accumulate for LSST pixels   
 #             # if no mask for dataset, easy: just spatially bin the already processed sequences
@@ -138,13 +149,13 @@ def extractPSFParameters(args):
 #                 lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, indices=indices,
 #                                                                subtract=False) )
                 
-            names = ['12', '4', '2', '15']
-            ## extract PSF parameters
-            for i in range(len(names)):
-                # for Speckle
-                savePathSpeckle = args.baseDir + args.savePath.format(args.source, color, fileNumber, names[i])
-                imgHelper.estimateMomentsHSM(speckle_series[i][0], maskDict=speckle_series[i][1], 
-                                          saveDict={'save':True, 'path':savePathSpeckle})
+#             names = ['12', '4', '2', '15']
+#             ## extract PSF parameters
+#             for i in range(len(names)):
+#                 # for Speckle
+#                 savePathSpeckle = args.baseDir + args.savePath.format(args.source, color, fileNumber, names[i])
+#                 imgHelper.estimateMomentsHSM(speckle_series[i][0], maskDict=speckle_series[i][1], 
+#                                               saveDict={'save':True, 'path':savePathSpeckle})
 #                 # for LSST
 #                 savePathLSST = args.baseDir + args.savePath.format('LSST', color, fileNumber, names[i])
 #                 imgHelper.estimateMomentsHSM(lsst_series[i][0], max_ashift=15, 
@@ -167,7 +178,7 @@ if __name__ == '__main__':
 
     parser.add_argument("--dataDir", type=str, default='/global/cscratch1/sd/chebert/rawSpeckles/', 
                         help="Path to data directory")
-    parser.add_argument("--baseDir", type=str, default='/global/homes/c/chebert/SpecklePSF/', 
+    parser.add_argument("--baseDir", type=str, default='../', 
                         help="Path to base directory for e.g. code and saving")
     parser.add_argument("--savePath", type=str, default='Fits/{}/{}Filter/img{}_{}psfs.p', 
                         help="Path to save, from baseDir")
@@ -184,11 +195,11 @@ if __name__ == '__main__':
     parser.add_argument("--fwhm", type=str, default='Fits/fwhm{}.p', 
                         help="Path to FWHM file, from baseDir directory")
 
-    parser.add_argument("--source", type=str, default='DSSI', help='Is the input data or simulation')
+    parser.add_argument("--source", type=str, default='Zorro', help='Is the input data or simulation')
     parser.add_argument("--fileNameFormat", type=str, default='img_{}_{}.fits',
                        help='Format for data files, from dataDir directory')
 
-    parser.add_argument("--filters", type=tuple, default=(692,880),
+    parser.add_argument("--filters", type=tuple, default=(562,832),
                        help='Two filters for the data')
 
     args = parser.parse_args()

@@ -5,7 +5,72 @@ import sklearn.utils
 from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
 from astropy.io import fits
+import pickle
     
+def filterData(fileNames, headerFile, centroidFile, filterOutliers=False, fwhmWeight=1):
+    '''
+    Function to filter data: accept files that are:
+    - in the bright star catalog 
+    - satisfy a centroid and fwhm size cut
+    '''
+    # load in dict of centroids
+    with open(centroidFile, 'rb') as file:
+        centroidDict = pickle.load(file)
+
+    # load in dict of headers
+    with open(headerFile, 'rb') as file:
+        headerDict = pickle.load(file)
+        
+    accepted = []
+    for fN in fileNames:
+        # throw out a few on purpose:
+        if fN == '190716Z0672' or fN == '190619Z0190': 
+            continue
+            
+        if filterOutliers:
+            if fN == '190619Z0122' or fN == '190619Z0130':
+                continue
+
+        # is object in bright star catalog
+        try:
+            if headerDict[fN]['object'][:2] != 'HR':
+                continue
+        except KeyError:
+            print(f'{fN} was not in headerDict!')
+            continue
+            
+        # is airmass < 1.3
+        try:
+            if headerDict[fN]['AIRMASS'] > 1.3:
+                continue
+        except KeyError:
+            print(f'{fN} was not in headerDict!')
+            continue
+            
+        # load in HSM fit file
+        with open('../Fits/{}/filter{}/{}_{}psfs.p'.format('Zorro', 562, fN, '15'), 'rb') as file:
+            hsmResult = pickle.load(file)
+
+        # check HSM result checks out:
+        if (np.array([hsmResult[j].error_message != '' for j in range(int(15))])).any():
+            continue
+
+        # check for centroid + size
+        fwhm = hsmResult[-1].moments_sigma * 2.355
+        try:
+            comR = np.sqrt((centroidDict[562][fN]['x']-128)**2 + (centroidDict[562][fN]['y']-128)**2).mean()
+        except KeyError:
+            print(f'{fN} was not in centroiDict!')
+            continue
+
+        if fwhm*fwhmWeight + comR > 128:
+            continue
+            
+        accepted.append(fN)
+        
+    return accepted
+
+
 def plotRvT(ax1, ax2, psfN, color, goodSeeing, badSeeing, colors, goodBoot=None, badBoot=None,
             ylims=[0,.9], alpha=1):
     '''
@@ -14,22 +79,22 @@ def plotRvT(ax1, ax2, psfN, color, goodSeeing, badSeeing, colors, goodBoot=None,
     Inputs:
     - 2 axis instances
     - number of psf bins (expect either '4' or '12')
-    - color ('a' or 'b') corresponding to which filter you want to plot
+    - color: which filter you want to plot
     - goodSeeing and badSeeing, dicts containing the correlation coefficients.
     '''
     if psfN == '12':
-        pairs = [[i for i in goodSeeing['g1']['a'].keys() if i[0] == str(j) or (i=='1011' and j==10)] 
+        pairs = [[i for i in goodSeeing['g1'][color].keys() if i[0] == str(j) or (i=='1011' and j==10)] 
                  for j in range(11)]
         distances = [[pairs[i][j] for i in range(len(pairs)-j)] for j in range(11)]
         
         ptsG = np.arange(11)
-        if color == 'b': ptsG = [i + .2 for i in ptsG]
+        if color > 800: ptsG = [i + .2 for i in ptsG]
         ptsB = [i + 0 for i in ptsG]
     
     elif psfN == '4':
         distances = ['01', '12', '23', '02', '13', '03']
         ptsG = [0,0,0,1,1,2]
-        if color == 'b': ptsG = [i + .1 for i in ptsG]
+        if color > 800: ptsG = [i + .1 for i in ptsG]
         ptsB = [i + .05 for i in ptsG]
         
     else:
@@ -39,7 +104,7 @@ def plotRvT(ax1, ax2, psfN, color, goodSeeing, badSeeing, colors, goodBoot=None,
     for i in range(2):
         param = ['g1', 'g2'][i]
         ax = [ax1, ax2][i]
-        fmt = '^' if color=='a' else 'o'
+        fmt = 'o' if color <800 else '^'
 
         if psfN == '4':
             ax.errorbar(ptsG, [goodSeeing[param][color][j] for j in distances], 
@@ -68,30 +133,36 @@ def plotRvT(ax1, ax2, psfN, color, goodSeeing, badSeeing, colors, goodBoot=None,
         ax.set_ylim(ylims)
     return ax1, ax2
 
-def imagePSF(fileN, save, expTime=[0,1000], filePath='/global/cscratch1/sd/chebert/rawSpeckles/img_{}_{}.fits'):
+def imagePSF(fileN, save, filters=(562, 832), expTime=[0,1000],
+             filePath='/global/cscratch1/sd/chebert/rawSpeckles/img_{}_{}.fits'):
     '''
     produce (and optionally save) an image of the 60s (or other) integrated PSF for data number fileN
     '''
-    hdu = fits.open(filePath.format('a', fileN))
-    dataA = hdu[0].data[:,:,::-1]
+    if filters[0] == 562: cL1 = 'b' 
+    elif filters[0] == 692: cL2 = 'a'
+    if filters[1] == 832: cL1 = 'r' 
+    elif filters[1] == 880: cL2 = 'b'
+       
+    hdu = fits.open(filePath.format(cL1, fileN))
+    data1 = hdu[0].data
     hdu.close()
-    hdu = fits.open(filePath.format('b', fileN))
-    dataB = hdu[0].data
+    hdu = fits.open(filePath.format(cL2, fileN))
+    data2 = hdu[0].data[:,:,::-1]
     hdu.close()
     
     plt.figure(figsize=(6,3))
     ax=plt.subplot(121)
-    plt.imshow(dataA[expTime[0]:expTime[1]].mean(axis=0), origin='lower', cmap='plasma')
-    plt.xticks([0, 64, 128, 192, 256], [0, .7, 1.4, 2.1, 2.8])
-    plt.yticks([0, 64, 128, 192, 256], [0, .7, 1.4, 2.1, 2.8])
+    plt.imshow(data1[expTime[0]:expTime[1]].mean(axis=0), origin='lower', cmap='plasma')
+    plt.xticks([0, 64, 128, 192, 256], [0, .625, 1.25, 1.874, 2.5])
+    plt.yticks([0, 64, 128, 192, 256], [0, .625, 1.25, 1.874, 2.5])
     plt.ylabel('[arcsec]')
     plt.xlabel('[arcsec]')
-    ax.text(5, 235, '692nm', color='gold', fontsize=12)
+    ax.text(5, 235, f'{filters[0]}nm', color='gold', fontsize=12)
     ax=plt.subplot(122)
-    plt.imshow(dataB[expTime[0]:expTime[1]].mean(axis=0), origin='lower', cmap='plasma')
-    plt.xticks([0, 64, 128, 192, 256], [0, .7, 1.4, 2.1, 2.8])
+    plt.imshow(data2[expTime[0]:expTime[1]].mean(axis=0), origin='lower', cmap='plasma')
+    plt.xticks([0, 64, 128, 192, 256], [0, .625, 1.25, 1.874, 2.5])
     plt.yticks([0, 64, 128, 192, 256], [])
-    ax.text(5, 235, '880nm', color='gold', fontsize=12)
+    ax.text(5, 235, f'{filters[1]}nm', color='gold', fontsize=12)
     plt.xlabel('[arcsec]')
     
     plt.tight_layout()
@@ -121,54 +192,54 @@ def pearsonEllipse(pearson, ax, label, mean_x, mean_y, scale_x, scale_y, edgecol
     ellipse.set_transform(transf + ax.transData)
     return ax.add_patch(ellipse)
 
-def corrDict(thing, parameter, bootstrap=False, B=1000, N=61):
+def corrDict(thing, parameter, filters=(562, 832), bootstrap=False, B=1000, N=61):
     '''
     Calculate correlation coefficients for PSF parameters
     Can calculate these using bootstrap samples of original data
     '''
     if parameter == 'size':
-        nVars = thing['a'][parameter].shape[1]
+        nVars = thing[filters[0]][parameter].shape[1]
         pairs = [l for k in [[(i,j) for j in range(i,nVars) if i!=j] for i in range(nVars)] for l in k]
         if bootstrap:
             if nVars == 2:
                 corrDict = {c: bootstrapCorr(thing[c]['size'][:,0], thing[c]['size'][:,1], B, N)
-                               for c in ['a', 'b']}
+                               for c in filters}
             else:
                 corrDict = {c: {f'{i}{j}': bootstrapCorr(thing[c]['size'][:,i], thing[c]['size'][:,j], B, N)
-                                for (i,j) in pairs} for c in ['a', 'b']}
+                                for (i,j) in pairs} for c in filters}
         else:
             if nVars == 2:
                 corrDict = {c: np.corrcoef(thing[c]['size'][:,0], thing[c]['size'][:,1], rowvar=False)[0,-1]
-                               for c in ['a', 'b']}
+                               for c in filters}
             else:
                 corrDict = {c: {f'{i}{j}': np.corrcoef(thing[c]['size'][:,i], thing[c]['size'][:,j], 
                                                           rowvar=False)[0,-1]
-                                for (i,j) in pairs} for c in ['a', 'b']}
+                                for (i,j) in pairs} for c in filters}
 
     elif parameter == 'ellipticity':
-        nVars = thing['a']['g1'].shape[1]
+        nVars = thing[filters[0]]['g1'].shape[1]
         pairs = [l for k in [[(i,j) for j in range(i,nVars) if i!=j] for i in range(nVars)] for l in k]
         if bootstrap:
             if nVars == 2:
                 corrDict = {ellipticity:
                                {c: bootstrapCorr(thing[c][ellipticity][:,0], thing[c][ellipticity][:,1], B, N)
-                               for c in ['a', 'b']} for ellipticity in ['g1', 'g2']}
+                               for c in filters} for ellipticity in ['g1', 'g2']}
             else:
                 corrDict = {ellipticity:
                                {c: {f'{i}{j}': bootstrapCorr(thing[c][ellipticity][:,i], 
                                                              thing[c][ellipticity][:,j], B, N)
-                                for (i,j) in pairs} for c in ['a', 'b']} for ellipticity in ['g1', 'g2']}
+                                for (i,j) in pairs} for c in filters} for ellipticity in ['g1', 'g2']}
         else:
             if nVars == 2:
                 corrDict = {ellipticity:
                                {c: np.corrcoef(thing[c][ellipticity][:,0], 
                                                thing[c][ellipticity][:,1], rowvar=False)[0,-1]
-                               for c in ['a', 'b']} for ellipticity in ['g1', 'g2']}
+                               for c in filters} for ellipticity in ['g1', 'g2']}
             else:
                 corrDict = {ellipticity:
                                {c: {f'{i}{j}': np.corrcoef(thing[c][ellipticity][:,i], 
                                                            thing[c][ellipticity][:,j], rowvar=False)[0,-1]
-                                for (i,j) in pairs} for c in ['a', 'b']} for ellipticity in ['g1', 'g2']}
+                                for (i,j) in pairs} for c in filters} for ellipticity in ['g1', 'g2']}
     return corrDict
         
 def bootstrapCorr(thing1, thing2, B, N=61):
@@ -220,8 +291,8 @@ def fitDropoff(ellipticity, pts=np.logspace(-1.22,1.79,15), expectedAsymptote=No
 
     if delay:
         fitParams = np.zeros((2,3))
-        p0 = [0.5, -.2, -1.22]
-        bounds = [[-np.inf,-1, -1.22], [np.inf, 0, 1.79]]
+        p0 = [0.5, -.2, 0]
+        bounds = [[-np.inf,-1, 0], [np.inf, 0, 60.]]
     else:
         fitParams = np.zeros((2,2))
         p0=[0.5, -.2]

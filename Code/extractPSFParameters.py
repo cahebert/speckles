@@ -8,41 +8,16 @@ import imageHelper as imgHelper
 
 # assumptions:
 # 1. Only input numbers of files of useable data (i.e. already tossed files that are have e.g. blurred frames)
-# 2. Have already run some rudimentary CoM and FWHM estimation, stored in paths args.COM and args.FWHM (one each for a and b filters) 
-# 3. Pixel masks (if any) are a dict stored in the args.pixelMask path
-# 4. There exists directories needed for args.savePath that are formattable according to (in order): pixel size binning, color, filename, number of PSFs 
+# 2. Pixel masks (if any) are a dict stored in the args.pixelMask path
+# 3. There exists directories needed for args.savePath that are formattable according to (in order): pixel size binning, color, filename, number of PSFs 
 
 
 def extractPSFParameters(args):
     # load in fileNames (these should just be file numbers not complete names!)
     inputFileNumbers = np.loadtxt(args.baseDir + args.fileNumbers.format(args.source), 
                                   delimiter=',', dtype='str')
-            
-    # if source is data, load in pixelMasks and gain conversions
-    if args.source == 'DSSI':
-        # load in CoM and FWHM files   
-        with open(args.baseDir + args.com.format('B'), 'rb') as file:
-            comB = pickle.load(file)
-        with open(args.baseDir + args.fwhm.format('B'), 'rb') as file:
-            fwhmB = pickle.load(file)
-
-        with open(args.baseDir + args.com.format('A'), 'rb') as file:
-            comA = pickle.load(file)
-        with open(args.baseDir + args.fwhm.format('A'), 'rb') as file:
-            fwhmA = pickle.load(file)
-    
-        # use these to make an array of accepted datasets
-        acceptedFileNumbers = [fn for fn in inputFileNumbers 
-                               if comA[f'img_a_{fn}.fits'] + fwhmA[f'img_a_{fn}.fits'] < 128 
-                               and comB[f'img_b_{fn}.fits'] + fwhmB[f'img_b_{fn}.fits'] < 128] 
                                   
-        with open(args.baseDir + args.masks, 'rb') as file:
-            pixelMasks = pickle.load(file)
-    
-        with open(args.baseDir + args.gain, 'rb') as file:
-            gains_e = dict(pickle.load(file))
-                                  
-    elif args.source == 'Zorro':
+    if args.source == 'Zorro':
         acceptedFileNumbers = inputFileNumbers
 #         with open(args.baseDir + args.masks, 'rb') as file:
 #             pixelMasks = pickle.load(file)        
@@ -50,13 +25,17 @@ def extractPSFParameters(args):
         pixelMasks = None
         acceptedFileNumbers = [f.strip(' ') for f in inputFileNumbers]
     
-    # define a dict to store the centroid calculated later
-    centroidDict = {c:{} for c in args.filters}
+    # try opening centroidDict. If it doesn't exist, make a new one.
+    # centroidDict will store the centroids calculated later
+    try:
+        with open(args.baseDir + f'Fits/{args.source}centroids.p', 'rb') as file:
+            centroidDict = pickle.load(file)
+    except FileNotFoundError:
+        centroidDict = {c:{} for c in args.filters}
     
     for fileNumber in acceptedFileNumbers:
         for color in args.filters:
             if args.source == 'Zorro': colorL = 'b' if color==562 else 'r' 
-            if args.source == 'DSSI': colorL = 'b' if color==692 else 'a'
             if args.source == 'sim': colorL = 562 if color==562 else 832
                 
             # load in raw speckle data from fits file
@@ -66,27 +45,19 @@ def extractPSFParameters(args):
                 header = hdu[0].header
                 hdu.close()
             except FileNotFoundError:
-                print(f'file {fileNumber}{colorL} not found!')
-                print(f'looked for it at: {args.dataDir + args.fileNameFormat.format(fileNumber, colorL)}')
-                continue
+                print(f'file {fileNumber}{colorL} not found! looked for it at: {args.dataDir +
+                        args.fileNameFormat.format(fileNumber, colorL)}')
             except IOError:
-                print(f'hmm, something weird happened when opening {fileNumber}{colorL}. Perhaps could not decompress?')
-                continue
-            
-            # apply gain and subtract background
-            if args.source == 'DSSI':
-                data *= gains_e[fileNumber]
-                if color == 'a':
+                print(f'hmm, something weird happened when opening {fileNumber}{colorL}.')
+                    
+            if args.source == 'Zorro':
+                if color == 832:
                     data = data[:,:,::-1]
-                # if source is data, will input a pixelMask file. Is there anything for this dataset?
                 try:
                     maskDict = pixelMasks[f'img_{color}_{fileNumber}.fits']
                 except:
                     maskDict = None
-                    
-            elif args.source == 'Zorro':
-                if color == 832:
-                    data = data[:,:,::-1]
+                # if source is data, will input a pixelMask file. Is there anything for this dataset?
                 try:
                     maskDict = pixelMasks[f'img_{color}_{fileNumber}.fits']
                 except:
@@ -95,14 +66,22 @@ def extractPSFParameters(args):
             else: 
                 maskDict = None
 
+            # call helper to subtract background counts from image data
             imgHelper.subtractBackground(data, maskDict)
             
             # calculate 200 centroids throughout the dataset, each on a stack of 5 exposures
             centroid_out = imgHelper.calculateCentroids(data, N=200, subtract=True)
+            
+            # check that centroid ran correctly. if not, don't save it to dict and delete any existing entry
             if centroid_out is False:
                 print(f'HSM moments estimation had an error for PSF number {names[i]} in file {fileNumber}')
-                continue
-            else: centroidDict[color][fileNumber] = centroid_out
+                try:
+                    del centroidDict[color][fileNumber]
+                except:
+                    continue
+            else: 
+                # this will overwrite any old value of centroid if this dict was read in
+                centroidDict[color][fileNumber] = centroid_out
         
             # accumulate stacked PSFs for speckle pixels
             speckle_series = []
@@ -178,10 +157,10 @@ def extractPSFParameters(args):
     with open(args.baseDir + f'Fits/{args.source}centroids.p', 'wb') as file:
         pickle.dump(centroidDict, file)
 
-    if args.source == 'Zorro':
-        # save the dict of all header fits to a pickle file
-        with open(args.baseDir + f'Code/{args.source}headers.p', 'wb') as file:
-            pickle.dump(headerInfo, file)
+#     if args.source == 'Zorro':
+#         # save the dict of all header fits to a pickle file
+#         with open(args.baseDir + f'Code/{args.source}headers.p', 'wb') as file:
+#             pickle.dump(headerInfo, file)
     
     
 if __name__ == '__main__':
@@ -201,11 +180,6 @@ if __name__ == '__main__':
                         help="Path to gain file, from baseDir directory")
     parser.add_argument("--fileNumbers", type=str, default='Code/{}fileNumbers.txt', 
                         help="Path to file numbers file, from baseDir directory")
-
-    parser.add_argument("--com", type=str, default='Fits/centerOfMass{}.p', 
-                        help="Path to CoM file, from baseDir directory")
-    parser.add_argument("--fwhm", type=str, default='Fits/fwhm{}.p', 
-                        help="Path to FWHM file, from baseDir directory")
 
     parser.add_argument("--source", type=str, default='Zorro', help='Is the input data or simulation')
     parser.add_argument("--fileNameFormat", type=str, default='img_{}_{}.fits',

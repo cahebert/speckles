@@ -13,7 +13,7 @@ class psfParameters():
     def __init__(self, source, 
                  fileNumbers='Code/{}fileNumbers.txt', 
                  baseDir='/global/homes/c/chebert/SpecklePSF/', 
-                 filters=[692, 880],
+                 filters=[562, 832],
                  plottingColors=['royalblue','darkorange']):
         '''
         Initialize an instance of this class for analyzing HSM outpute for speckle images.
@@ -22,14 +22,15 @@ class psfParameters():
         self.filters = filters
         self.source = source
         
-        if source=='Zorro':
-            self.scale = {self.filters[0]: .00992, self.filters[1]: .01095}
-        else:
-            self.scale = {self.filters[0]: .011, self.filters[1]: .011}
+#         if source=='Zorro':
+        self.scale = {self.filters[0]: .00992, self.filters[1]: .01095}
+#         else:
+#             self.scale = {self.filters[0]: .011, self.filters[1]: .011}
             
         self.base = baseDir
-        self.fileNumbers = np.loadtxt(self.base + fileNumbers.format(self.source), delimiter=',', dtype='str')
-        
+        self.fileNumbers = [f.strip(' ') 
+                            for f in np.loadtxt(self.base + 
+                                                fileNumbers.format(self.source), delimiter=',', dtype='str')]
         self.parameters = {psfN:{} for psfN in ['2', '4', '12', '15']}
         
         self.eDropoff = {}
@@ -41,16 +42,24 @@ class psfParameters():
         # plotting settings
         self.colors = {self.filters[0]: plottingColors[0], self.filters[1]: plottingColors[1]}
             
-    def loadParameterSet(self, psfN, filePath=None):
+    def loadParameterSet(self, psfN, filePath=None, quiet=False):
         '''
         Load in a set of HSM parameters corresponding to a particular pixel size and data bins. 
         filePath is path (from self.base) of (formattable) name of pickle file containing HSM outputs.
         '''
         if filePath is None:
-            if self.source=='Zorro':
-                filePath='Fits/{}/filter{}/{}_{}psfs.p'
-            elif self.source=='DSSI':
-                filePath='Fits/{}/{}Filter/img{}_{}psfs.p'
+            if self.source == 'sim':
+                filePath = 'Fits/{}/filter{}/{}_{}psfs.p'
+            if self.source == 'Zorro':
+                filePath = 'Fits/{}/filter{}/{}_{}psfs.p'
+            elif self.source == 'DSSI':
+                filePath = 'Fits/{}/{}Filter/img{}_{}psfs.p'
+        
+        try:
+            self.not_found[0]
+        except:
+            self.not_found = []
+            
         for color in self.filters:
             self.parameters[psfN][color] = {} 
             
@@ -60,18 +69,27 @@ class psfParameters():
             
             unusedFiles = 0
             for i in range(len(self.fileNumbers)):
+                if self.fileNumbers[i] in self.not_found:
+                    if not quiet: 
+                        print(f'file for {self.fileNumbers[i]} was previously not found')
+                    unusedFiles += 1
+                    continue
                 try:
-                    with open(self.base + filePath.format(self.source, color, self.fileNumbers[i], psfN), 'rb') as file:
+                    with open(self.base + 
+                              filePath.format(self.source, color, self.fileNumbers[i], psfN), 'rb') as file:
                         hsmResult = pickle.load(file)
                 except FileNotFoundError:
                     unusedFiles += 1
-                    print(f'file {self.fileNumbers[i]} was not found!')
+                    self.not_found.append(self.fileNumbers[i])
+                    if not quiet: 
+                        print(f'file {self.fileNumbers[i]} was not found!')
                     # if fileNotFound, assume the dataset was rejected (may not be the best way of doing this)
                     continue
                     
                 if (np.array([hsmResult[j].error_message != '' for j in range(int(psfN))])).any():
                     # do something 
-                    print(f'dataset {self.fileNumbers[i]} has an HSM error in moments estimation!')
+                    if not quiet: 
+                        print(f'dataset {self.fileNumbers[i]} has an HSM error in moments estimation!')
                 else:
                     shears[:, i-unusedFiles, :] = np.array([[hsmResult[j].observed_shape.g1, 
                                                              hsmResult[j].observed_shape.g2] 
@@ -79,14 +97,16 @@ class psfParameters():
                     sizes[i-unusedFiles, :] = np.array([hsmResult[j].moments_sigma for j in range(int(psfN))])
                     rho4s[i-unusedFiles, :] = np.array([hsmResult[j].moments_rho4 for j in range(int(psfN))])
             
-            self.parameters[psfN][color]['g1'] = shears[0]
-            self.parameters[psfN][color]['g2'] = shears[1]
-            self.parameters[psfN][color]['g'] = np.sqrt(shears[0]**2 + shears[1]**2)
-            self.parameters[psfN][color]['size'] = sizes * 2.355 * self.scale[color]
-            self.parameters[psfN][color]['rho4'] = rho4s
+            total_n = len(self.fileNumbers)-unusedFiles
+            self.parameters[psfN][color]['g1'] = shears[0,:total_n]
+            self.parameters[psfN][color]['g2'] = shears[1,:total_n]
+            self.parameters[psfN][color]['g'] = np.sqrt(shears[0,:total_n]**2 + shears[1,:total_n]**2)
+            self.parameters[psfN][color]['size'] = sizes[:total_n] * 2.355 * self.scale[color]
+            self.parameters[psfN][color]['rho4'] = rho4s[:total_n]
             
             if unusedFiles != 0:
-                print(f'beware, {unusedFiles} files (for filter {color}) were not loaded in correctly!')
+                if not quiet: 
+                    print(f'beware, {unusedFiles} files (for filter {color}) were not loaded in correctly!')
             
     def loadAllParameters(self, filePath=None):
         '''
@@ -218,7 +238,8 @@ class psfParameters():
         if self.filters[0] not in self.parameters['15'].keys():
             self.loadParameterSet('15')
 
-        ellipticity = np.array([self.parameters['15'][self.filters[0]]['g'], self.parameters['15'][self.filters[1]]['g']])
+        ellipticity = np.array([self.parameters['15'][self.filters[0]]['g'], 
+                                self.parameters['15'][self.filters[1]]['g']])
         if expectedAsymptote:
                 expectedAsymptote = np.array([np.sqrt(self.parameters['15'][self.filters[0]]['g1'][:,-1].mean()**2 +
                                                       self.parameters['15'][self.filters[0]]['g2'][:,-1].mean()**2),
@@ -240,7 +261,8 @@ class psfParameters():
         
         # if user wants the plotted results:
         if plot:
-            self.plotEMag(ellipticity, save=save, expectedAsymptote=expectedAsymptote, delay=delay, overlay=overlay)
+            self.plotEMag(ellipticity, save=save, 
+                          expectedAsymptote=expectedAsymptote, delay=delay, overlay=overlay)
         return
     
     def plotEMag(self, ellipticity=None, figsize=(8, 7), save=False, fontsize=12, overlay=False,
@@ -367,8 +389,10 @@ class psfParameters():
         self.centroidSigma = {}
         self.centroidVar = {}
         for color in self.filters:
-            x = np.array([centroid['x'] for (fileN, centroid) in centroidDict[color].items() if fileN in self.fileNumbers])
-            y = np.array([centroid['y'] for (fileN, centroid) in centroidDict[color].items() if fileN in self.fileNumbers])
+            x = np.array([centroid['x'] for (fileN, centroid) in centroidDict[color].items() 
+                          if fileN in self.fileNumbers and fileN not in self.not_found])
+            y = np.array([centroid['y'] for (fileN, centroid) in centroidDict[color].items() 
+                          if fileN in self.fileNumbers and fileN not in self.not_found])
             self.centroidSigma[color] = [np.sum((x-x.mean(axis=1)[:,None])**2, axis=1)/x.shape[1] - 
                                          np.sum((y-y.mean(axis=1)[:,None])**2, axis=1)/y.shape[1],
                                          np.sum((x-x.mean(axis=1)[:,None])*(y-y.mean(axis=1)[:,None]), axis=1)/x.shape[1]]
@@ -476,24 +500,25 @@ class psfParameters():
         plt.figure(figsize=figsize)
         grid = plt.GridSpec(1, 4, wspace=0, hspace=0)
 
-        plt.subplot(grid[:,:3])
-        plt.plot(size1, b, 'o', color=color, ms=ms)
-        plt.xlabel('FWHM at {}nm [arcsec]'.format(self.filters[0]), fontsize=12)
-        plt.ylabel('b', fontsize=12)
+        ax0 = plt.subplot(grid[:,:3])
+        ax0.plot(size1, b, 'o', color=color, ms=ms)
+        ax0.set_xlabel('FWHM at {}nm [arcsec]'.format(self.filters[0]), fontsize=12)
+        ax0.set_ylabel('b', fontsize=12)
         # Kolmogorov prediction: sizeA = (lamA/lamB)^b * sizeB
-        plt.axhline(-0.2, linestyle='--', color='darkgrey', linewidth=1, label='Kolmogorov turbulence')
-        plt.legend(frameon=False, fontsize=12)
+        ax0.axhline(-0.2, linestyle='--', color='darkgrey', linewidth=1, label='Kolmogorov turbulence')
+        ax0.legend(frameon=False, fontsize=12) 
 #         plt.xticks([.4,.6,.8,1.,1.2, 1.])
 
         ax = plt.subplot(grid[:,3:])
         plt.axhline(b.mean(), linestyle='--', color=color)
         plt.hist(b, histtype='step', bins=10, color=color, orientation="horizontal")
         plt.hist(b, bins=10, color=color, alpha=0.15, orientation="horizontal")
-        ax.text(2, b.mean()+.02, f'$-${abs(b.mean()):.1f}$\pm${b.std():.2f}', fontsize=12, color=color)
-        ax.text(2, b.mean()+.02, f'$-${abs(b.mean()):.1f}$\pm${b.std():.2f}', 
+        ax.text(2, b.mean()+.02, f'$-${abs(b.mean()):.2f}$\pm${b.std():.2f}', fontsize=12, color=color)
+        ax.text(2, b.mean()+.02, f'$-${abs(b.mean()):.2f}$\pm${b.std():.2f}', 
                 fontsize=12, alpha=0.75, color='darkslategrey')
         plt.yticks([],[])
-        plt.axhline(-0.2, linestyle='--', color='darkgrey', linewidth=1, label='Kolmogorov turbulence')
+        ax.set_ylim(ax0.axes.get_ylim())
+        ax.axhline(-0.2, linestyle='--', color='darkgrey', linewidth=1, label='Kolmogorov turbulence')
 
         plt.tight_layout()
         if save:

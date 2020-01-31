@@ -1,0 +1,175 @@
+import galsim
+import numpy as np
+from astropy.io import fits
+import scipy.stats as sst
+import pandas as pd
+import pickle
+from pynverse import inversefunc
+
+def r0_from_vk(fwhm, L0):
+    '''
+    given FWHM values (in arcsec), return the r0 values (in cm) as predicted 
+    by Van Karman turbulence with the input L0
+    '''
+    def fwhm_vankarman(r0, L0):
+        kolm_term = (0.976 * .5) / (4.85 * r0)
+        vk_correction = np.sqrt(1 - 2.183 * (r0 / L0)**(0.356)) 
+        return kolm_term * vk_correction    
+
+    if type(fwhm) == np.ndarray:
+        r0 = np.array([inversefunc(fwhm_vankarman, fwhm[i], 
+                                   args=(L0[i]), domain=[.0001,1]) for i in range(500)])
+    else:
+        r0 = inversefunc(fwhm_vankarman, fwhm, args=(L0), domain=[.0001,1])
+
+    return r0
+
+def draw_atmosphere_params(wind_path, random_state=None, save=None):
+    '''
+    draw inputs for galsim.Atmosphere simulation based on: 
+    Tokovinin 2006 OTP model, seeing from LSST site characterization, and NOAA GFS model winds
+    Inputs
+    ======
+    - path to the file where wind samples are kept
+    - random_state to seed generation (default is None)
+    - save: where to save the dict of parameters, except if None (default)
+    '''
+    # define an optical turbulence profile (OTP):
+    # Cerro Pachon OTP model from Tokovinin 2006
+    otp = {'good': np.array([2.2, .2, .03, .02, .2, .15, .25]), 
+           'typical': np.array([2.7, .4, .1, .1, .4, .2, .3]), 
+           'bad': np.array([3.3, .7, .2, .4, .6, .3, .3]), 
+           'alt': [0, 0.5, 1, 2, 4, 8, 16]}
+
+    out = {'altitude':otp['alt']}
+
+    # use random seed to seed a gaussian random number generator
+    gd = galsim.GaussianDeviate(galsim.BaseDeviate(random_state))
+
+    # outer scale, use Josh's ImSim numbers (truncated log normal, median at 25m):
+    L0 = 0
+    while L0 < 10.0 or L0 > 100:
+        L0 = np.exp(gd() * .6 + np.log(25.))
+    out['L0'] = [L0]
+
+    # set parameters of log-normal seeing distributino:
+    # from the LSST SRD (or similar document)
+    s = .452
+    mu = -.5174
+    
+    # set an r0 value
+    fwhm = np.exp(gd() * s + mu)
+
+    out['r0_500'] = [r0_from_vk(fwhm, L0)]
+    
+    # set which OTP to use based on seeing value draw
+    if fwhm < sst.lognorm.ppf(1./3, s=s, scale=np.exp(mu)): 
+        out['r0_weights'] = otp['good']
+    elif fwhm < sst.lognorm.ppf(2./3, s=s, scale=np.exp(mu)): 
+        out['r0_weights'] = otp['typical']
+    else: 
+        out['r0_weights'] = otp['bad']
+    
+    # load files of wind data
+    with open(wind_path.format('speed'), 'rb') as file:
+        wind_spd_df = pickle.load(file)
+    with open(wind_path.format('dir'), 'rb') as file:
+        wind_dir_df = pickle.load(file)
+    
+    # choose a random point from the wind data
+    np.random.seed(random_state)
+    
+    rand_pt = int(np.random.choice(wind_spd_df[0].index, size=1))
+    
+    # save the speeds and directions for that time
+    out['speed'] = np.asarray([wind_spd_df[alt][rand_pt] for alt in otp['alt']])
+    out['direction'] = np.asarray([wind_dir_df[alt][rand_pt] for alt in otp['alt']])*galsim.degrees
+    
+    if save is not None:
+        with open(save, 'wb') as file:
+            pickle.dump(out, file)
+        
+    ## or maybe store results in a dict that I can unzip/whatever directly into Atmosphere
+    return out
+
+def simulate_speckle_psf(args):
+    '''
+    Returns an atmospheric simulation (Van Karman) to replicate Zorro data. 
+    Inputs
+    ======
+    - color: wavelength of the filter desired
+    - rnd_seed: random seed for the number generators
+    - scale: screen scale for the turbulence layer. TBD what the default should be for robust results
+    - total_time: total exposure time (default: 60s)
+    - params_save_path: path to save the parameters, except if None
+    - exp_time: time for each exposure. Default is .06s
+    Returns
+    =======
+    an array of simulated short exposure (60ms) PSFs
+    '''
+    # pixel scale depends on color!
+    if args.color == 562:
+        pixel_scale = .00992
+    else:
+        pixel_scale = .01095
+    
+    # GS quantities
+    diameter = 8.1
+    obscuration = 1.024/8.1
+    nx, ny = 256, 256
+    
+    # draw random values of r0, r0_weights, altitude, speed, and direction
+    atm_args = draw_atmosphere_params(args.wind_path, args.rnd_seed, args.save_params_path)
+    
+    rng = galsim.BaseDeviate(args.rnd_seed)
+
+    # fix screen size by the highest speed of the layers and the telescope diameter
+    # except if speed > 40, which leads to memory errors
+    screen_size = min(40, max(atm_args['speed'])) * args.total_time + diameter
+    
+    # number of exposures to fit in the total time
+    N = int(args.total_time / args.exp_time) 
+    dead_time = 4./1000
+        
+    # make the atmosphere object:
+    atm = galsim.Atmosphere(screen_size=screen_size, rng=rng, **atm_args)
+    
+    if args.scale != 'default':
+        for layer in atm:
+            layer.screen_scale = args.scale * layer.screen_scale
+
+    # for each exposure in the series, draw a PSF of exposure length exp_time
+    psf_series = np.zeros((N, nx, ny))
+    for n in range(N):
+        psf = atm.makePSF(lam=args.color, t0=n*(args.exp_time + dead_time), exptime=args.exp_time, 
+                          diam=diameter, obscuration=obscuration)
+        
+        psf_series[n] = psf.drawImage(nx=nx, ny=ny, scale=pixel_scale).array
+        
+    if args.save_psfs_path is not None:
+        hdu = fits.PrimaryHDU(psf_series)
+        hdu.writeto(args.save_psfs_path)  
+
+    return psf_series
+    
+
+if __name__ == '__main__':
+    from argparse import ArgumentParser
+    parser = ArgumentParser() 
+    
+    # define the input parameters needed
+    # Only color and save_psfs_path are required 
+    parser.add_argument("--color", type=int, help='wavelength (in nm) of the desired image. Required.')
+    parser.add_argument("--save_psfs_path", type=str, default=None, help='path to save psf series result')
+    # optional inputs below:
+    parser.add_argument("--exp_time", type=float, default=0.06,
+                        help="Exposure time per frame (in seconds).  Default: 60ms")
+    parser.add_argument("--scale", type=float, default=0.9, 
+                        help='scale (in fractions of r0_500) for the phase screens. Default: 0.75')
+    parser.add_argument("--total_time", type=float, default=60, help='total imaging time')
+    parser.add_argument("--rnd_seed", type=int, default=None, help='random seed')
+    parser.add_argument("--save_params_path", type=str, default=None, help='path to save input params, if any')
+    parser.add_argument("--wind_path", type=str, default='otp_wind_{}_notday.p')
+    args = parser.parse_args()
+
+    simulate_speckle_psf(args)

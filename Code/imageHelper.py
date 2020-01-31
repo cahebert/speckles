@@ -249,12 +249,15 @@ def singleExposureHSM(img, expMask=None, subtract=True, maxIters=400,
     galImage = galsim.Image(img, xmin=0, ymin=0)
 
     # run HSM adaptive moments with initial sigma guess
-    hsmOut = galsim.hsm.FindAdaptiveMom(galImage, hsmparams=new_params,
+    try:
+        hsmOut = galsim.hsm.FindAdaptiveMom(galImage, hsmparams=new_params,
                                         badpix=badPix,
                                         guess_sig=guestimateSig,
                                         guess_centroid=galsim.PositionD(comx, comy),
                                         strict=strict)
-
+    except RuntimeError:
+        return False
+        
     # return HSM output
     return hsmOut
 
@@ -266,12 +269,13 @@ def calculateCentroids(imgSeries, N=200, subtract=False):
         fit = singleExposureHSM(img=np.sum(imgSeries[i*step:(i+1)*step], axis=0)/step, 
                                 subtract=subtract, maxIters=25000, 
                                 max_ashift=200, max_amoment=1e7)
+        if fit == False: return False
         centroids[:,i] = [fit.moments_centroid.x, fit.moments_centroid.y]
     
     return {'x': centroids[0], 'y': centroids[1]}
     
 def estimateMomentsHSM(images, maskDict=None, saveDict={'save':True, 'path':None}, 
-                       strict=False, subtract=False, maxIters=400, 
+                       strict=False, subtract=False, maxIters=800, 
                        max_ashift=100, max_amoment=5.0e5):
     '''
     Estimate the moments of the PSF images using HSM.
@@ -299,6 +303,7 @@ def estimateMomentsHSM(images, maskDict=None, saveDict={'save':True, 'path':None
                                    subtract=subtract, strict=strict, 
                                    max_ashift=max_ashift, max_amoment=max_amoment)
 
+        if hsmOut == False: return False
         # put results in a list
         fitResults.append(hsmOut)
         
@@ -308,10 +313,10 @@ def estimateMomentsHSM(images, maskDict=None, saveDict={'save':True, 'path':None
             with open(saveDict['path'], 'wb') as file:
                 pickle.dump(fitResults, file)
         except FileNotFoundError:
-            print('File not found. Try adding/checking path in saveDict')
-        return
+            print('Save file not found. Try adding/checking path in saveDict')
+        return True
     else:
-        return hsmOut
+        return fitResults
     
 # def makeMask(image, maskSize, maskCenter=False, center='new'):
 #     # define a mask

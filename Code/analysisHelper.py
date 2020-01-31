@@ -133,21 +133,27 @@ def plotRvT(ax1, ax2, psfN, color, goodSeeing, badSeeing, colors, goodBoot=None,
         ax.set_ylim(ylims)
     return ax1, ax2
 
-def imagePSF(fileN, save, filters=(562, 832), expTime=[0,1000],
+def imagePSF(fileN, save, filters=(562, 832), expTime=[0,1000], source='zorro',
              filePath='/global/cscratch1/sd/chebert/rawSpeckles/img_{}_{}.fits'):
     '''
     produce (and optionally save) an image of the 60s (or other) integrated PSF for data number fileN
     '''
-    if filters[0] == 562: cL1 = 'b' 
-    elif filters[0] == 692: cL2 = 'a'
-    if filters[1] == 832: cL1 = 'r' 
-    elif filters[1] == 880: cL2 = 'b'
-       
+    if source == 'dssi':
+        cL1 = 'a'
+        cL2 = 'b'
+    elif source == 'zorro':
+        cL1 = 'b' 
+        cL2 = 'r'
+    elif source == 'sim':
+        cL1 = filters[0]
+        cL2 = filters[1]
+
     hdu = fits.open(filePath.format(cL1, fileN))
     data1 = hdu[0].data
     hdu.close()
     hdu = fits.open(filePath.format(cL2, fileN))
-    data2 = hdu[0].data[:,:,::-1]
+    if source == 'sim': data2 = hdu[0].data
+    else: data2 = hdu[0].data[:,:,::-1]
     hdu.close()
     
     plt.figure(figsize=(6,3))
@@ -267,12 +273,6 @@ def powerLaw(t, p, asymptote=0):
         return p[0] * t**p[1] + asymptote
     elif len(p) == 3:
         return np.array([p[0] if time<p[2] else p[0] * (time-p[2])**p[1] for time in t]) + asymptote
-    
-# def powerLawDelay(t, td, alpha, a, asymptote=0):
-#     '''
-#     return a power law at points t, with exponent alpha, amplitude a, and an optional asymptote.
-#     '''
-#     return np.array([a if time<td else a * (time-td)**alpha for time in t]) + asymptote
     
 def fitDropoff(ellipticity, pts=np.logspace(-1.22,1.79,15), expectedAsymptote=None, delay=False):  
     '''

@@ -48,6 +48,7 @@ def extractPSFParameters(args):
 #             pixelMasks = pickle.load(file)        
     else:
         pixelMasks = None
+        acceptedFileNumbers = [f.strip(' ') for f in inputFileNumbers]
     
     # define a dict to store the centroid calculated later
     centroidDict = {c:{} for c in args.filters}
@@ -56,6 +57,7 @@ def extractPSFParameters(args):
         for color in args.filters:
             if args.source == 'Zorro': colorL = 'b' if color==562 else 'r' 
             if args.source == 'DSSI': colorL = 'b' if color==692 else 'a'
+            if args.source == 'sim': colorL = 562 if color==562 else 832
                 
             # load in raw speckle data from fits file
             try:
@@ -96,80 +98,90 @@ def extractPSFParameters(args):
             imgHelper.subtractBackground(data, maskDict)
             
             # calculate 200 centroids throughout the dataset, each on a stack of 5 exposures
-            centroidDict[color][fileNumber] = imgHelper.calculateCentroids(data, N=200, subtract=True)
+            centroid_out = imgHelper.calculateCentroids(data, N=200, subtract=True)
+            if centroid_out is False:
+                print(f'HSM moments estimation had an error for PSF number {names[i]} in file {fileNumber}')
+                continue
+            else: centroidDict[color][fileNumber] = centroid_out
         
-#             # accumulate stacked PSFs for speckle pixels
-#             speckle_series = []
+            # accumulate stacked PSFs for speckle pixels
+            speckle_series = []
             
-#             # 12x5s stacks
-#             speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=12,
-#                                                               subtract=False, 
-#                                                               maskDict=maskDict,
-#                                                               overRide=True) )
-#             # 4x15s stacks
-#             speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=4,
-#                                                               subtract=False, 
-#                                                               maskDict=maskDict) )
-#             # 2x30s stacks
-#             speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=2,
-#                                                               subtract=False, 
-#                                                               maskDict=maskDict) )
-#             # full 60s stack: save 15 images at 2^N exposure time
-#             indices = [int(np.round(i)) - 1 for i in np.logspace(0, 3, 15)]
+            # 12x5s stacks
+            speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=12,
+                                                              subtract=False, 
+                                                              maskDict=maskDict,
+                                                              overRide=True) )
+            # 4x15s stacks
+            speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=4,
+                                                              subtract=False, 
+                                                              maskDict=maskDict) )
+            # 2x30s stacks
+            speckle_series.append( imgHelper.accumulateExposures(sequence=data, numBins=2,
+                                                              subtract=False, 
+                                                              maskDict=maskDict) )
+            # full 60s stack: save 15 images at 2^N exposure time
+            indices = [int(np.round(i)) - 1 for i in np.logspace(0, 3, 15)]
 
-#             speckle_series.append( imgHelper.accumulateExposures(sequence=data, 
-#                                                               subtract=False, 
-#                                                               maskDict=maskDict,
-#                                                               indices=indices) )
+            speckle_series.append( imgHelper.accumulateExposures(sequence=data, 
+                                                              subtract=False, 
+                                                              maskDict=maskDict,
+                                                              indices=indices) )
 
-#             ## accumulate for LSST pixels   
-#             # if no mask for dataset, easy: just spatially bin the already processed sequences
-#             if maskDict is None:
-#                 lsst_series = [
-#                     [np.array([imgHelper.spatialBinToLSST(img) for img in speckle_series[i][0]]), 0] 
-#                     for i in range(len(speckle_series))]
+            if args.lsstpix:
+                ## accumulate for LSST pixels   
+                # if no mask for dataset, easy: just spatially bin the already processed sequences
+                if maskDict is None:
+                    lsst_series = [
+                        [np.array([imgHelper.spatialBinToLSST(img) for img in speckle_series[i][0]]), 0] 
+                        for i in range(len(speckle_series))]
 
-#             # if there are masks, then have to spatially bin first (using masks) and then reprocess.
-#             else: 
-#                 lsst_data = np.array([imgHelper.spatialBinToLSST(data[i]) for i in range(1000)])
-#                 for i in maskDict.keys():
-#                     lsst_data[i] = imgHelper.spatialBinToLSST(data[i], expMask=maskDict[i])
-                    
-#                 lsst_series = []
-#                 # 12x5s stacks
-#                 lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, numBins=12,
-#                                                                subtract=False, overRide=True) )
-#                 # 4x15s stacks
-#                 lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, numBins=4,
-#                                                                subtract=False) )
-#                 # 2x30s stacks
-#                 lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, numBins=2,
-#                                                                subtract=False) )
-#                 # full 60s stack
-#                 lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, indices=indices,
-#                                                                subtract=False) )
+                # if there are masks, then have to spatially bin first (using masks) and then reprocess.
+                else: 
+                    lsst_data = np.array([imgHelper.spatialBinToLSST(data[i]) for i in range(1000)])
+                    for i in maskDict.keys():
+                        lsst_data[i] = imgHelper.spatialBinToLSST(data[i], expMask=maskDict[i])
+
+                    lsst_series = []
+                    # 12x5s stacks
+                    lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, numBins=12,
+                                                                   subtract=False, overRide=True) )
+                    # 4x15s stacks
+                    lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, numBins=4,
+                                                                   subtract=False) )
+                    # 2x30s stacks
+                    lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, numBins=2,
+                                                                   subtract=False) )
+                    # full 60s stack
+                    lsst_series.append( imgHelper.accumulateExposures(sequence=lsst_data, indices=indices,
+                                                                   subtract=False) )
                 
-#             names = ['12', '4', '2', '15']
-#             ## extract PSF parameters
-#             for i in range(len(names)):
-#                 # for Speckle
-#                 savePathSpeckle = args.baseDir + args.savePath.format(args.source, color, fileNumber, names[i])
-#                 imgHelper.estimateMomentsHSM(speckle_series[i][0], maskDict=speckle_series[i][1], 
-#                                               saveDict={'save':True, 'path':savePathSpeckle})
-#                 # for LSST
-#                 savePathLSST = args.baseDir + args.savePath.format('LSST', color, fileNumber, names[i])
-#                 imgHelper.estimateMomentsHSM(lsst_series[i][0], max_ashift=15, 
-#                                           saveDict={'save':True, 'path':savePathLSST},
-#                                           strict=False)
+            names = ['12', '4', '2', '15']
+            ## extract PSF parameters
+            for i in range(len(names)):
+                # for Speckle
+                savePathSpeckle = args.baseDir + args.savePath.format(args.source, color, 
+                                                                      fileNumber, names[i])
+                success = imgHelper.estimateMomentsHSM(speckle_series[i][0], maskDict=speckle_series[i][1], 
+                                              saveDict={'save':True, 'path':savePathSpeckle})
+                if not success:
+                    print(f'HSM moments estimation had an error for PSF number {names[i]} in file {fileNumber}')
+                    
+                if args.lsstpix:
+                    # for LSST
+                    savePathLSST = args.baseDir + args.savePath.format('LSST', color, fileNumber, names[i])
+                    imgHelper.estimateMomentsHSM(lsst_series[i][0], max_ashift=15, 
+                                              saveDict={'save':True, 'path':savePathLSST},
+                                              strict=False)
 
     # save the dict of all centroid fits to a pickle file
     with open(args.baseDir + f'Fits/{args.source}centroids.p', 'wb') as file:
         pickle.dump(centroidDict, file)
 
-#     if args.source == 'Zorro':
-#         # save the dict of all header fits to a pickle file
-#         with open(args.baseDir + f'Code/{args.source}headers.p', 'wb') as file:
-#             pickle.dump(headerInfo, file)
+    if args.source == 'Zorro':
+        # save the dict of all header fits to a pickle file
+        with open(args.baseDir + f'Code/{args.source}headers.p', 'wb') as file:
+            pickle.dump(headerInfo, file)
     
     
 if __name__ == '__main__':
@@ -201,6 +213,8 @@ if __name__ == '__main__':
 
     parser.add_argument("--filters", type=tuple, default=(562,832),
                        help='Two filters for the data')
+    parser.add_argument("--lsstpix", type=bool, default=False,
+                       help='Whether to extract parameters from images binned to LSST pixels')
 
     args = parser.parse_args()
 

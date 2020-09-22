@@ -4,14 +4,14 @@ import pickle
 from scipy.optimize import curve_fit
 import sklearn.utils
 
-def image_com(image, exp_mask=None):
+def image_com(image, exp_mask=False):
     '''
     Find the center of mass of given image.
     Inputs: ::image:: and optionally ::exp_mask::, exposure mask for the image
     Returns tuple of ints corrsponding to the x, y indices of the center of mass
     '''
     img = np.copy(image)
-    if exp_mask is not None:
+    if exp_mask:
         if abs(img.min()) > 500:
             subtract_background([img], exp_mask_dict={0:exp_mask})
         # give 0 weight to masked pixels
@@ -61,64 +61,69 @@ def image_fwhm(img, x, y):
     # return averaged FWHM
     return fwhm / 2
 
-def subtract_background(img_series, accumulated=False, exp_mask_dict=None, method='slice', center='new'):
+def subtract_background(img_series, accumulated=False, exp_mask_dict=False):
     '''
     Subtract a flat background from a given series of images. Uses slices from the four sides of an image 
     and uses the mean of whichever has the smallest variance 
-    Input:
-    ======
-    img_series: list of images to be background subtracted
-    accumulated: optional, whether the images are sinlge exposures
-    exp_mask_dict: optional, dictionary of exposures with associated pixel masks
-    method: specify method for finding the background value. 
-            'slice' means finding edge slice with lowest variance, and 
-            'mask' is applying a mask based on the PSF position.
-    center: if using the 'mask' method, how do you center the mask and decide on edge values? 
-            'new' method centers mask but doesn't move the mask edges further than 10 pixels from the edge, 
-            'old' method moves it arbitrarily far.
-    Output:
-    =======
-    None. Modifies the input series img_series in place.
-    Notes:
-    ======
-    If passing just a single image in, key value in exp_mask_dict must 
+    NOTES: 
+    * Modifies the input series img_series in place.
+    * If passing just a single image in, key value in exp_mask_dict must 
     reflect the position of the image in the input sequence, not the original series. 
+    Input:
+    :img_series: list of images to be background subtracted
+    :accumulated: optional, whether the images are single exposures
+    :exp_mask_dict: optional, dictionary of exposures with associated pixel masks
     '''
-    if exp_mask_dict is not None:
-        # not accumulated: only flag the exposure in the dict
-        flag = list(exp_mask_dict.keys())[0]
-        assert len(list(exp_mask_dict.keys())) == 1,'Found more than one mask in dict. Beware: code is not built for this!'
-        exp_mask = exp_mask_dict[flag]
-    else: 
-        flag = None
+    if exp_mask_dict:
+        flags = list(exp_mask_dict.keys())
+        # if accumulated: 
+            # something should happen here, like flags are all exposures and mask is combined?
+            # but that doesn't work in the scenario that there are a ton of masked pixels in the center of PSF
+    else:
+        flags = []
         
     for i in range(len(img_series)):
-        img = img_series[i]
+        img = np.copy(img_series[i])
+        nx, ny = img.shape
+        if nx <= 15:
+            mask_size = 1
+        else:
+            mask_size = 10
         
-        if method == 'slice':
-            nx, ny = img.shape
-            if nx <= 15:
-                mask_size = 1
-            else:
-                mask_size = 10
-            sideSlices = np.zeros((4, mask_size, nx))
-            if flag is not None and accumulated or i == flag:
-                maskedExposure = img * exp_mask
-                sideSlices[0] = maskedExposure[:mask_size, :]
-                sideSlices[1] = maskedExposure[nx - mask_size:nx, :]
-                sideSlices[2] = maskedExposure[:, :mask_size].T
-                sideSlices[3] = maskedExposure[:, ny - mask_size:ny].T
-                #don't include masked pixels in the variance!
-                minVariance = np.argmin([sideSlices[j][sideSlices[j]!=0].flatten().var() for j in range(4)])
-                                
-            else:
-                sideSlices[0] = img[:mask_size, :]
-                sideSlices[1] = img[nx - mask_size:nx, :]
-                sideSlices[2] = img[:, :mask_size].T
-                sideSlices[3] = img[:, ny - mask_size:ny].T
-                
-            minVariance = np.argmin(sideSlices.var(axis=(1,2)))
-            img -= np.mean(sideSlices[minVariance][sideSlices[minVariance]!=0])
+        side_slices = np.zeros((4, mask_size, nx))
+        if i in flags: 
+            img = img * exp_mask_dict[i]
+
+        side_slices[0] = img[:mask_size, :]
+        side_slices[1] = img[nx - mask_size:nx, :]
+        side_slices[2] = img[:, :mask_size].T
+        side_slices[3] = img[:, ny - mask_size:ny].T
+
+        min_var = np.argmin([side_slices[j][side_slices[j]!=0].flatten().var() for j in range(4)])
+        img_series[i] -= np.mean(side_slices[min_var][side_slices[min_var]!=0])
+
+        # if nx <= 15:
+        #     mask_size = 1
+        # else:
+        #     mask_size = 10
+        # sideSlices = np.zeros((4, mask_size, nx))
+        # if flag is not None and accumulated or i == flag:
+            # maskedExposure = img * exp_mask
+            # sideSlices[0] = maskedExposure[:mask_size, :]
+            # sideSlices[1] = maskedExposure[nx - mask_size:nx, :]
+            # sideSlices[2] = maskedExposure[:, :mask_size].T
+            # sideSlices[3] = maskedExposure[:, ny - mask_size:ny].T
+            #don't include masked pixels in the variance!
+        #     minVariance = np.argmin([sideSlices[j][sideSlices[j]!=0].flatten().var() for j in range(4)])
+                            
+        # else:
+        #     sideSlices[0] = img[:mask_size, :]
+        #     sideSlices[1] = img[nx - mask_size:nx, :]
+        #     sideSlices[2] = img[:, :mask_size].T
+        #     sideSlices[3] = img[:, ny - mask_size:ny].T
+            
+        # minVariance = np.argmin(sideSlices.var(axis=(1,2)))
+        # img -= np.mean(sideSlices[minVariance][sideSlices[minVariance]!=0])
 
 def single_exposure_HSM(img, mask_dict=None, subtract=True, max_iters=400,
                       max_ashift=75, max_amoment=5.0e5, strict=True):

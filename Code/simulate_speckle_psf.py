@@ -1,7 +1,7 @@
 import galsim
+import pws
 import numpy as np
 from astropy.io import fits
-import scipy.stats as sst
 import pandas as pd
 import pickle
 from pynverse import inversefunc
@@ -24,24 +24,22 @@ def r0_from_vk(fwhm, L0):
 
     return r0
 
-def draw_atmosphere_params(wind_path, random_state=None, save=None):
+def draw_atmosphere_params(random_state=None, save=None):
     '''
     draw inputs for galsim.Atmosphere simulation based on: 
     Tokovinin 2006 OTP model, seeing from LSST site characterization, and NOAA GFS model winds
     Inputs
     ======
-    - path to the file where wind samples are kept
     - random_state to seed generation (default is None)
     - save: where to save the dict of parameters, except if None (default)
     '''
-    # define an optical turbulence profile (OTP):
-    # Cerro Pachon OTP model from Tokovinin 2006
-    otp = {'good': np.array([2.2, .2, .03, .02, .2, .15, .25]), 
-           'typical': np.array([2.7, .4, .1, .1, .4, .2, .3]), 
-           'bad': np.array([3.3, .7, .2, .4, .6, .3, .3]), 
-           'alt': [0, 0.5, 1, 2, 4, 8, 16]}
+    pgen = pws.gen_params.ParameterGenerator()
+    params = pgen.draw_parameters()
 
-    out = {'altitude':otp['alt']}
+    out = {'altitude': params['h']}
+    out['r0_weights'] = params['j']
+    out['speed'] = params['speed'].flatten()
+    out['direction'] = [i*galsim.degrees for i in params['direction'].flatten()]
 
     # use random seed to seed a gaussian random number generator
     gd = galsim.GaussianDeviate(galsim.BaseDeviate(random_state))
@@ -61,30 +59,7 @@ def draw_atmosphere_params(wind_path, random_state=None, save=None):
     fwhm = np.exp(gd() * s + mu)
 
     out['r0_500'] = [r0_from_vk(fwhm, L0)]
-    
-    # set which OTP to use based on seeing value draw
-    if fwhm < sst.lognorm.ppf(1./3, s=s, scale=np.exp(mu)): 
-        out['r0_weights'] = otp['good']
-    elif fwhm < sst.lognorm.ppf(2./3, s=s, scale=np.exp(mu)): 
-        out['r0_weights'] = otp['typical']
-    else: 
-        out['r0_weights'] = otp['bad']
-    
-    # load files of wind data
-    with open(wind_path.format('speed'), 'rb') as file:
-        wind_spd_df = pickle.load(file)
-    with open(wind_path.format('dir'), 'rb') as file:
-        wind_dir_df = pickle.load(file)
-    
-    # choose a random point from the wind data
-    np.random.seed(random_state)
-    
-    rand_pt = int(np.random.choice(wind_spd_df[0].index, size=1))
-    
-    # save the speeds and directions for that time
-    out['speed'] = np.asarray([wind_spd_df[alt][rand_pt] for alt in otp['alt']])
-    out['direction'] = np.asarray([wind_dir_df[alt][rand_pt] for alt in otp['alt']])*galsim.degrees
-    
+
     if save is not None:
         with open(save, 'wb') as file:
             pickle.dump(out, file)
@@ -119,7 +94,7 @@ def simulate_speckle_psf(args):
     nx, ny = 256, 256
     
     # draw random values of r0, r0_weights, altitude, speed, and direction
-    atm_args = draw_atmosphere_params(args.wind_path, args.rnd_seed, args.save_params_path)
+    atm_args = draw_atmosphere_params(args.rnd_seed, args.save_params_path)
     
     rng = galsim.BaseDeviate(args.rnd_seed)
 
@@ -159,7 +134,7 @@ if __name__ == '__main__':
     
     # define the input parameters needed
     # Only color and save_psfs_path are required 
-    parser.add_argument("--color", type=int, help='wavelength (in nm) of the desired image. Required.')
+    parser.add_argument("--color", type=int, default=562, help='wavelength (in nm) of the desired image. Required.')
     parser.add_argument("--save_psfs_path", type=str, default=None, help='path to save psf series result')
     # optional inputs below:
     parser.add_argument("--exp_time", type=float, default=0.06,
@@ -169,7 +144,7 @@ if __name__ == '__main__':
     parser.add_argument("--total_time", type=float, default=60, help='total imaging time')
     parser.add_argument("--rnd_seed", type=int, default=None, help='random seed')
     parser.add_argument("--save_params_path", type=str, default=None, help='path to save input params, if any')
-    parser.add_argument("--wind_path", type=str, default='otp_wind_{}_notday.p')
     args = parser.parse_args()
 
     simulate_speckle_psf(args)
+

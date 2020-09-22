@@ -49,18 +49,18 @@ class DataFilter():
 
         comR = np.sqrt((entroids['x']-128)**2 + (centroids['y']-128)**2).mean()
 
-        if comR + self.size * 2.355 > 128:
+        center_size_check = comR + self.size * 2.355 > 128
+        if center_size_check:
             return False
         else:
             self.info['centroids'] = centroids
             return True
 
-    def check_flux():
+    def check_wander():
         '''check whether the PSF leaves the postage stamp'''
         if self.source == 'data':
-            fluxes = self.imgs.sum(axis=(1,2))
-            ## IN DEV ##
-            return True
+            wander_check = fhelp.flux_test(self.imgs)
+            return wander_check
         else:
             return True # sim will never wander off frame
 
@@ -78,7 +78,7 @@ class DataFilter():
                         try: self.info['mask'][f_index] = mask_ids
                         except KeyError: self.info['mask'] = {f_index: mask_ids}
         else: return
-        
+
     def filter_data(info_dict={}):
         '''run all the data checks. if dataset passes, save self.info'''
         # run header check

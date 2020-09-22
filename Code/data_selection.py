@@ -15,7 +15,6 @@ class DataFilter():
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), filename)
         
         self.source = source
-        self.fn = fits_path.split('/')[-1]
         self.info = {}
 
         self.imgs = hdu[0].data.astype('float')
@@ -79,7 +78,7 @@ class DataFilter():
                         except KeyError: self.info['mask'] = {f_index: mask_ids}
         else: return
 
-    def filter_data(info_dict={}):
+    def filter_data():
         '''run all the data checks. if dataset passes, save self.info'''
         # run header check
         if self.check_header():
@@ -90,11 +89,47 @@ class DataFilter():
                     # find cosmic rays, adds any found to self.info dict
                     self.find_cr()    
 
-                    # if all checks pass, add dataset info to info dict
-                    info_dict[self.fn] = self.info
-
-                    return info_dict
+                    # if all checks pass, return True
+                    return True
                 else: return False
             else: return False
         else: return False
+
+if __name__ == '__main__':
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+
+    parser.add_argument("--data_folder", type=str, default='MayHRStars/', 
+                        help="path to desired data directory within Zorro")
+    parser.add_argument("--local_path", type=str, 
+                        default='/Users/clairealice/Documents/research/speckles/intermediates/', 
+                        help="path to local directory for saving output")
+    parser.add_argument('--zorro_path', type=str, default='/Volumes/My Passport/Zorro/', 
+                        help="path to main Zorro data directory")
+    
+    data_path = os.join(parser.zorro_path, parser.data_folder) 
+    dict_path = os.join(parser.local_path, 
+                        f'accepted_info_{parser.data_folder.strip('/')}.p')
+
+    # try to open info dict
+    try:
+        info_dict = pickle.load(open(dict_path, 'rb'))
+    # if it doesn't exist, then intialize
+    except:
+        info_dict = {}
+
+    # list all the files in the data folder to look through
+    data_files = [f for f in os.listdir(data_path) if os.isfile(os.join(data_path, f))]
+
+    for f in data_files:
+        data = DataFilter(os.join(data_path, f))
+        if data.filter_data():
+            info_dict[f] = data.info
+
+    try:
+        pickle.dump(info_dict, open(dict_path, 'wb'))
+    # if there's an error, try saving with some random numbers appended 
+    # this should probably be only with a specific kind of error
+    except:
+        pickle.dump(info_dict, open(dict_path[:-2] + f'_{np.random.uniform():4f}.p', 'wb'))
 

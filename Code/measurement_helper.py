@@ -67,8 +67,7 @@ def subtract_background(img_series, accumulated=False, exp_mask_dict=False):
     and uses the mean of whichever has the smallest variance 
     NOTES: 
     * Modifies the input series img_series in place.
-    * If passing just a single image in, key value in exp_mask_dict must 
-    reflect the position of the image in the input sequence, not the original series. 
+    * no currently implemented way to handle masks differently for accumulated exposures
     Input:
     :img_series: list of images to be background subtracted
     :accumulated: optional, whether the images are single exposures
@@ -125,11 +124,11 @@ def subtract_background(img_series, accumulated=False, exp_mask_dict=False):
         # minVariance = np.argmin(sideSlices.var(axis=(1,2)))
         # img -= np.mean(sideSlices[minVariance][sideSlices[minVariance]!=0])
 
-def single_exposure_HSM(img, mask_dict=None, subtract=True, max_iters=400,
+def single_exposure_HSM(img, exp_mask=False, subtract=True, max_iters=400,
                       max_ashift=75, max_amoment=5.0e5, strict=True):
     if subtract:
         img = np.copy(img)
-        exp_mask_dict = {0: mask_dict} if mask_dict is not None else None
+        exp_mask_dict = {0: exp_mask} if exp_mask else False
         subtract_background([img], exp_mask_dict=exp_mask_dict)
     
     # guesstimate center and size of PSF as start for HSM
@@ -137,7 +136,7 @@ def single_exposure_HSM(img, mask_dict=None, subtract=True, max_iters=400,
     fwhm = image_fwhm(img, comx, comy)
     guestimateSig = fwhm / 2.355
 
-    badPix = galsim.Image(1 - mask_dict, xmin=0, ymin=0) if mask_dict is not None else None
+    badPix = galsim.Image(1 - exp_mask, xmin=0, ymin=0) if exp_mask else False
 
     # make GalSim image of the exposure
     new_params = galsim.hsm.HSMParams(max_amoment=max_amoment, 
@@ -147,11 +146,12 @@ def single_exposure_HSM(img, mask_dict=None, subtract=True, max_iters=400,
 
     # run HSM adaptive moments with initial sigma guess
     try:
-        hsmOut = galsim.hsm.FindAdaptiveMom(galImage, hsmparams=new_params,
-                                        badpix=badPix,
-                                        guess_sig=guestimateSig,
-                                        guess_centroid=galsim.PositionD(comx, comy),
-                                        strict=strict)
+        hsmOut = galsim.hsm.FindAdaptiveMom(galImage, 
+                                            hsmparams=new_params,
+                                            badpix=badPix,
+                                            guess_sig=guestimateSig,
+                                            guess_centroid=galsim.PositionD(comx, comy),
+                                            strict=strict)
     except RuntimeError:
         return False
         
@@ -167,16 +167,16 @@ def calculate_centroids(imgs, N=200, subtract=False):
     
     for i in range(N):
         fit = single_exposure_HSM(img=np.sum(imgs[i*step:(i+1)*step], axis=0)/step, 
-                                subtract=subtract, max_iters=25000, 
-                                max_ashift=200, max_amoment=1e7)
+                                  subtract=subtract, max_iters=25000, 
+                                  max_ashift=200, max_amoment=1e7)
         if fit == False: return False
         centroids[:,i] = [fit.moments_centroid.x, fit.moments_centroid.y]
     
     return {'x': centroids[0], 'y': centroids[1]}
 
-def estimate_moments_HSM(images, mask_dict=None, save_dict={'save':True, 'path':None}, 
-                       strict=False, subtract=False, max_iters=800, 
-                       max_ashift=100, max_amoment=5.0e5):
+def estimate_moments_HSM(images, exp_mask_dict=False, save_dict={'save':True, 'path':None}, 
+                         strict=False, subtract=False, max_iters=800, 
+                         max_ashift=100, max_amoment=5.0e5):
     '''
     Estimate the moments of the PSF images using HSM.
     TO DO:
@@ -188,20 +188,20 @@ def estimate_moments_HSM(images, mask_dict=None, save_dict={'save':True, 'path':
     fitResults = []
 
     for i in range(N):
-        # try to assign exp_mask to the entry in mask_dict
+        # try to assign exp_mask to the entry in exp_mask_dict
         try:
-            exp_mask = mask_dict[i]
+            exp_mask = exp_mask_dict[i]
         except TypeError:
-            # no mask_dict object => this dataset has no masks.
-            exp_mask = None
+            # no exp_mask_dict object => this dataset has no masks.
+            exp_mask = False
         except KeyError:
-            # no mask for exposure i => set to None.
-            exp_mask = None
+            # no mask for exposure i => set to False.
+            exp_mask = False
 
         # fit the image(s)
         hsmOut = single_exposure_HSM(images[i], exp_mask=exp_mask, max_iters=max_iters, 
-                                   subtract=subtract, strict=strict, 
-                                   max_ashift=max_ashift, max_amoment=max_amoment)
+                                     subtract=subtract, strict=strict, 
+                                     max_ashift=max_ashift, max_amoment=max_amoment)
 
         if hsmOut == False: return False
         # put results in a list

@@ -52,6 +52,7 @@ def flux_test(imgs):
     '''
     fluxes = imgs.sum(axis=(1,2))
 
+    
     ## TO DO
 
     return True

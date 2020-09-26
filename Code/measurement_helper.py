@@ -136,7 +136,7 @@ def single_exposure_HSM(img, exp_mask=False, subtract=True, max_iters=400,
     fwhm = image_fwhm(img, comx, comy)
     guestimateSig = fwhm / 2.355
 
-    badPix = galsim.Image(1 - exp_mask, xmin=0, ymin=0) if exp_mask else False
+    badPix = galsim.Image(1 - exp_mask, xmin=0, ymin=0) if exp_mask else None
 
     # make GalSim image of the exposure
     new_params = galsim.hsm.HSMParams(max_amoment=max_amoment, 
@@ -193,10 +193,10 @@ def estimate_moments_HSM(images, exp_mask_dict=False, save_dict={'save':True, 'p
             exp_mask = exp_mask_dict[i]
         except TypeError:
             # no exp_mask_dict object => this dataset has no masks.
-            exp_mask = False
+            exp_mask = None
         except KeyError:
-            # no mask for exposure i => set to False.
-            exp_mask = False
+            # no mask for exposure i => set to None.
+            exp_mask = None
 
         # fit the image(s)
         hsmOut = single_exposure_HSM(images[i], exp_mask=exp_mask, max_iters=max_iters, 

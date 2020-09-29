@@ -27,14 +27,14 @@ class ExtractParameters():
             self.imgs = hdu[0].data.astype('float')[:,:,::-1]
         hdu.close()
 
-        mhelp.subtract_backroung(self.imgs, exp_mask_dict=self.mask)
+        mhelp.subtract_background(self.imgs, exp_mask_dict=self.mask)
 
     def bin_psf(self, bin_exp, override=True):
         '''
         use this function to bin data into :bin_exp: second chunks
         :override: set whether to ignore imperfect divisions of data into bins
         '''
-        residual = max(bin_exp % .06)
+        residual = bin_exp % .06
         if residual != 0 and override is False:
             raise ValueError(f"Can't perfectly divide data into exposure bins of size {bin_exp}s")
         
@@ -82,14 +82,14 @@ class ExtractParameters():
         * A number indicated exposure length of bin
         * str indicates accumulated psf: for now just default indices'''
         parameters = {}
-
+        
         for exps in bins:
             if type(exps)==str:
-                accumulated, _, mask = self.accumulated(manual=indices)
-                parameters[exps] = mhelp.estimateMomentsHSM(accumulated, maskDict=mask, saveDict={'save':False})
+                accumulated, _, mask = self.accumulate_psf(manual=False)
+                parameters[exps] = mhelp.estimate_moments_HSM(accumulated, exp_mask_dict=mask, save_dict={'save':False})
             else:
                 binned, _, mask = self.bin_psf(exps)
-                parameters[exps] = mhelp.estimateMomentsHSM(binned, maskDict=mask, saveDict={'save':False})
+                parameters[exps] = mhelp.estimate_moments_HSM(binned, exp_mask_dict=mask, save_dict={'save':False})
 
         return parameters
 
@@ -125,6 +125,7 @@ if __name__ == '__main__':
                         help="path to local directory for saving output")
     parser.add_argument('-zorro', type=str, default='/Volumes/My Passport/Zorro/', 
                         help="path to main Zorro data directory")
+    parser.add_argument('-bins', default=[5, 15, 30, 60, 'acc'])
     args = parser.parse_args()
     
     data_path = os.path.join(args.zorro, args.data_folder) 
@@ -145,7 +146,8 @@ if __name__ == '__main__':
 
     ### maybe only take the files that have both filters?? probably should take care of this somewhere else!
 
-    result_dict = {}
+    # initialize result dict as nested dictionary, with exposure lengths as outermost key
+    result_dict = {exps:{} for exps in args.bins}
 
     for f in data_files[:5]:
         try:
@@ -155,11 +157,11 @@ if __name__ == '__main__':
 
         print(f)
         data = ExtractParameters(os.path.join(data_path, f), mask)
-        out = data.extract_parameters()
-        if out: result_dict[f] = out
-
-    # do I want to save the parameters in one dict? 
-    # should it be shuffled to have the outermost keys be the exposures and not the distinct datasets?
+        out = data.extract_parameters(bins=args.bins)
+        if out: 
+            # save results into result_dict 
+            for exps in args.bins:
+                result_dict[exps][f] = out[exps]
 
     try:
         pickle.dump(result_dict, open(result_path, 'wb'))

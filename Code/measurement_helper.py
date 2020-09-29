@@ -91,7 +91,7 @@ def subtract_background(img_series, accumulated=False, exp_mask_dict=False):
         
         side_slices = np.zeros((4, mask_size, nx))
         if i in flags: 
-            img = img * exp_mask_dict[i]
+            img[exp_mask_dict[i][:,0],exp_mask_dict[i][:,1]] = 0
 
         side_slices[0] = img[:mask_size, :]
         side_slices[1] = img[nx - mask_size:nx, :]

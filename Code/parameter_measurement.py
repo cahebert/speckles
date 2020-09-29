@@ -126,6 +126,7 @@ if __name__ == '__main__':
     parser.add_argument('-zorro', type=str, default='/Volumes/My Passport/Zorro/', 
                         help="path to main Zorro data directory")
     parser.add_argument('-bins', default=[5, 15, 30, 60, 'acc'])
+    parser.add_argument('-masks', default=True, action='store_false')
     args = parser.parse_args()
     
     data_path = os.path.join(args.zorro, args.data_folder) 
@@ -144,16 +145,16 @@ if __name__ == '__main__':
     # list all the files: these are the keys of the info dict
     data_files = list(info_dict.keys())
 
-    ### maybe only take the files that have both filters?? probably should take care of this somewhere else!
-
     # initialize result dict as nested dictionary, with exposure lengths as outermost key
     result_dict = {exps:{} for exps in args.bins}
 
     for f in data_files[:5]:
-        try:
-            mask = info_dict[f]['mask']
-        except KeyError:
-            mask = False
+        if args.masks:
+            try:
+                mask = info_dict[f]['mask']
+            except KeyError:
+                mask = False
+        else: mask = False
 
         print(f)
         data = ExtractParameters(os.path.join(data_path, f), mask)

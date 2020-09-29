@@ -91,7 +91,9 @@ class DataFilter():
 
                     # if all checks pass, return True
                     return True
-                else: return False
+                else: 
+                    print('I think I wandered off the frame!')
+                    return False
             else: return False
         else: return False
 
@@ -120,15 +122,26 @@ if __name__ == '__main__':
         info_dict = {}
 
     # list all the files in the data folder to look through
-    data_files = [f for f in os.listdir(data_path) if os.path.isfile(os.path.join(data_path, f)) and '.bz2' in f]
+    data_files = [f.split('.')[0] for f in os.listdir(data_path) if os.path.isfile(os.path.join(data_path, f)) and '.bz2' in f]
 
-    for f in data_files[:5]:
+    for f in data_files[:15]:
         print(f)
-        data = DataFilter(os.path.join(data_path, f))
+        data = DataFilter(os.path.join(data_path, f + '.fits.bz2'))
 
         if data.filter_data():
             info_dict[f] = data.info
-            
+
+    # only include in final save if both filters are accepted!!
+    good_r_files = [k for k in info_dict.keys() if 'r' in k]
+    good_b_files = [k for k in info_dict.keys() if 'b' in k]
+    # all r data that also passed in b filter
+    overlap_r_files = [f for f in good_r_files if f.replace('r','b') in good_b_files]
+    # all b data that also passed in r filter
+    overlap_b_files = [f for f in good_b_files if f.replace('b','r') in good_r_files]
+    # want to keep the union of these two above lists
+    overlap = overlap_r_files + overlap_b_files
+    info_dict = {f:info_dict[f] for f in overlap}
+    
     try:
         pickle.dump(info_dict, open(dict_path, 'wb'))
     # if there's an error, try saving with some random numbers appended 

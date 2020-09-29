@@ -50,9 +50,10 @@ def flux_test(imgs):
     '''
     check if PSF is wandering off frame using evolution of total flux across series of exposures
     '''
-    fluxes = imgs.sum(axis=(1,2))
-
+    fluxes = imgs[1:].sum(axis=(1,2))
+    threshold = np.median(fluxes)*.85
     
-    ## TO DO
-
-    return True
+    if (fluxes<threshold).any():
+        return False
+    else:
+        return True

@@ -45,15 +45,3 @@ def scan_image_for_cr(frame):
         return bins[first_gap], np.argwhere(frame>bins[first_gap])
     else: #if there are no gaps in the histogram
         return False
-
-def flux_test(imgs):
-    '''
-    check if PSF is wandering off frame using evolution of total flux across series of exposures
-    '''
-    fluxes = imgs[1:].sum(axis=(1,2))
-    threshold = np.median(fluxes)*.85
-    
-    if (fluxes<threshold).any():
-        return False
-    else:
-        return True

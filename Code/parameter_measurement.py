@@ -126,14 +126,18 @@ if __name__ == '__main__':
     parser.add_argument('-zorro', type=str, default='/Volumes/My Passport/Zorro/', 
                         help="path to main Zorro data directory")
     parser.add_argument('-bins', default=[5, 15, 30, 60, 'acc'])
-    parser.add_argument('-masks', default=True, action='store_false')
+    parser.add_argument('-masks', default=False, action='store_true')
     args = parser.parse_args()
     
     data_path = os.path.join(args.zorro, args.data_folder) 
     dict_path = os.path.join(args.local_path, 
                              f"accepted_info_{args.data_folder.strip('/')}.p")
-    result_path = os.path.join(args.local_path, 
-                               f"parameters_{args.data_folder.strip('/')}.p")
+    if args.masks:
+       result_path = os.path.join(args.local_path, 
+                               f"parameters_{args.data_folder.strip('/')}_wmask.p")
+    else:
+       result_path = os.path.join(args.local_path, 
+                             f"parameters_{args.data_folder.strip('/')}.p")
 
     # try to open info dict
     try:
@@ -148,7 +152,7 @@ if __name__ == '__main__':
     # initialize result dict as nested dictionary, with exposure lengths as outermost key
     result_dict = {exps:{} for exps in args.bins}
 
-    for f in data_files[:5]:
+    for f in data_files:
         if args.masks:
             try:
                 mask = info_dict[f]['mask']
@@ -157,7 +161,7 @@ if __name__ == '__main__':
         else: mask = False
 
         print(f)
-        data = ExtractParameters(os.path.join(data_path, f), mask)
+        data = ExtractParameters(os.path.join(data_path, f + '.fits.bz2'), mask)
         out = data.extract_parameters(bins=args.bins)
         if out: 
             # save results into result_dict 

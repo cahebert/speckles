@@ -58,7 +58,9 @@ class DataFilter():
     def check_wander(self):
         '''check whether the PSF leaves the postage stamp'''
         if self.source == 'data':
-            wander_check = fhelp.flux_test(self.imgs)
+            fluxes = imgs[1:].sum(axis=(1,2))
+            threshold = np.median(fluxes)*.85
+            wander_check = (fluxes>threshold).all(): # false if any fluxes are below threshhold
             return wander_check
         else:
             return True # sim will never wander off frame
@@ -78,7 +80,7 @@ class DataFilter():
                         except KeyError: self.info['mask'] = {f_index: mask_ids}
         else: return
 
-    def filter_data(self):
+    def filter_data(self, cr_scan=False):
         '''run all the data checks. if dataset passes, save self.info'''
         # run header check
         if self.check_header():
@@ -86,8 +88,9 @@ class DataFilter():
             if self.check_center_size():
                 # run flux check
                 if self.check_wander():
-                    # find cosmic rays, adds any found to self.info dict
-                    self.find_cr()    
+                    if cr_scan: 
+                        # find cosmic rays, adds any found to self.info dict
+                        self.find_cr()    
 
                     # if all checks pass, return True
                     return True
@@ -96,6 +99,20 @@ class DataFilter():
                     return False
             else: return False
         else: return False
+
+def match_filter_pairs(info_dict):
+    '''go through the info dict and return version with datasets which have *both* filters accepted'''
+    # only include in final save if both filters are accepted!!
+    good_r_files = [k for k in info_dict.keys() if 'r' in k]
+    good_b_files = [k for k in info_dict.keys() if 'b' in k]
+    # all r data that also passed in b filter
+    overlap_r_files = [f for f in good_r_files if f.replace('r','b') in good_b_files]
+    # all b data that also passed in r filter
+    overlap_b_files = [f for f in good_b_files if f.replace('b','r') in good_r_files]
+    # want to keep the union of these two above lists
+    overlap = overlap_r_files + overlap_b_files
+
+    return {f:info_dict[f] for f in overlap}
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
@@ -108,6 +125,7 @@ if __name__ == '__main__':
                         help="path to local directory for saving output")
     parser.add_argument('-zorro', type=str, default='/Volumes/My Passport/Zorro/', 
                         help="path to main Zorro data directory")
+    parser.add_argument('-masks', default=False, action='store_true')
     args = parser.parse_args()
     
     data_path = os.path.join(args.zorro, args.data_folder) 
@@ -124,23 +142,14 @@ if __name__ == '__main__':
     # list all the files in the data folder to look through
     data_files = [f.split('.')[0] for f in os.listdir(data_path) if os.path.isfile(os.path.join(data_path, f)) and '.bz2' in f]
 
-    for f in data_files[:15]:
+    for f in data_files:
         print(f)
         data = DataFilter(os.path.join(data_path, f + '.fits.bz2'))
 
-        if data.filter_data():
+        if data.filter_data(args.masks):
             info_dict[f] = data.info
 
-    # only include in final save if both filters are accepted!!
-    good_r_files = [k for k in info_dict.keys() if 'r' in k]
-    good_b_files = [k for k in info_dict.keys() if 'b' in k]
-    # all r data that also passed in b filter
-    overlap_r_files = [f for f in good_r_files if f.replace('r','b') in good_b_files]
-    # all b data that also passed in r filter
-    overlap_b_files = [f for f in good_b_files if f.replace('b','r') in good_r_files]
-    # want to keep the union of these two above lists
-    overlap = overlap_r_files + overlap_b_files
-    info_dict = {f:info_dict[f] for f in overlap}
+    info_dict = match_filter_pairs(info_dict)
     
     try:
         pickle.dump(info_dict, open(dict_path, 'wb'))

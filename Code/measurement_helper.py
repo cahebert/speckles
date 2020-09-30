@@ -101,28 +101,6 @@ def subtract_background(img_series, accumulated=False, exp_mask_dict=False):
         min_var = np.argmin([side_slices[j][side_slices[j]!=0].flatten().var() for j in range(4)])
         img_series[i] -= np.mean(side_slices[min_var][side_slices[min_var]!=0])
 
-        # if nx <= 15:
-        #     mask_size = 1
-        # else:
-        #     mask_size = 10
-        # sideSlices = np.zeros((4, mask_size, nx))
-        # if flag is not None and accumulated or i == flag:
-            # maskedExposure = img * exp_mask
-            # sideSlices[0] = maskedExposure[:mask_size, :]
-            # sideSlices[1] = maskedExposure[nx - mask_size:nx, :]
-            # sideSlices[2] = maskedExposure[:, :mask_size].T
-            # sideSlices[3] = maskedExposure[:, ny - mask_size:ny].T
-            #don't include masked pixels in the variance!
-        #     minVariance = np.argmin([sideSlices[j][sideSlices[j]!=0].flatten().var() for j in range(4)])
-                            
-        # else:
-        #     sideSlices[0] = img[:mask_size, :]
-        #     sideSlices[1] = img[nx - mask_size:nx, :]
-        #     sideSlices[2] = img[:, :mask_size].T
-        #     sideSlices[3] = img[:, ny - mask_size:ny].T
-            
-        # minVariance = np.argmin(sideSlices.var(axis=(1,2)))
-        # img -= np.mean(sideSlices[minVariance][sideSlices[minVariance]!=0])
 
 def single_exposure_HSM(img, exp_mask=False, subtract=True, max_iters=400,
                       max_ashift=75, max_amoment=5.0e5, strict=True):

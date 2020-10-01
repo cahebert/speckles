@@ -42,101 +42,101 @@ class psfParameters():
         # plotting settings
         self.colors = {self.filters[0]: plottingColors[0], self.filters[1]: plottingColors[1]}
             
-    def loadParameterSet(self, psfN, filePath=None, quiet=False):
-        '''
-        Load in a set of HSM parameters corresponding to a particular pixel size and data bins. 
-        filePath is path (from self.base) of (formattable) name of pickle file containing HSM outputs.
-        '''
-        if filePath is None:
-            if self.source == 'sim':
-                filePath = 'Fits/{}/filter{}/{}_{}psfs.p'
-            if self.source == 'Zorro':
-                filePath = 'Fits/{}/filter{}/{}_{}psfs.p'
-            elif self.source == 'DSSI':
-                filePath = 'Fits/{}/{}Filter/img{}_{}psfs.p'
+    # def loadParameterSet(self, psfN, filePath=None, quiet=False):
+    #     '''
+    #     Load in a set of HSM parameters corresponding to a particular pixel size and data bins. 
+    #     filePath is path (from self.base) of (formattable) name of pickle file containing HSM outputs.
+    #     '''
+    #     if filePath is None:
+    #         if self.source == 'sim':
+    #             filePath = 'Fits/{}/filter{}/{}_{}psfs.p'
+    #         if self.source == 'Zorro':
+    #             filePath = 'Fits/{}/filter{}/{}_{}psfs.p'
+    #         elif self.source == 'DSSI':
+    #             filePath = 'Fits/{}/{}Filter/img{}_{}psfs.p'
         
-        try:
-            self.not_found[0]
-        except:
-            self.not_found = []
+    #     try:
+    #         self.not_found[0]
+    #     except:
+    #         self.not_found = []
             
-        for color in self.filters:
-            self.parameters[psfN][color] = {} 
+    #     for color in self.filters:
+    #         self.parameters[psfN][color] = {} 
             
-            shears = np.zeros((2, len(self.fileNumbers), int(psfN)))
-            sizes = np.zeros((len(self.fileNumbers), int(psfN)))
-            rho4s = np.zeros((len(self.fileNumbers), int(psfN)))
+    #         shears = np.zeros((2, len(self.fileNumbers), int(psfN)))
+    #         sizes = np.zeros((len(self.fileNumbers), int(psfN)))
+    #         rho4s = np.zeros((len(self.fileNumbers), int(psfN)))
             
-            unusedFiles = 0
-            for i in range(len(self.fileNumbers)):
-                if self.fileNumbers[i] in self.not_found:
-                    if not quiet: 
-                        print(f'file for {self.fileNumbers[i]} was previously not found')
-                    unusedFiles += 1
-                    continue
-                try:
-                    with open(self.base + 
-                              filePath.format(self.source, color, self.fileNumbers[i], psfN), 'rb') as file:
-                        hsmResult = pickle.load(file)
-                except FileNotFoundError:
-                    unusedFiles += 1
-                    self.not_found.append(self.fileNumbers[i])
-                    if not quiet: 
-                        print(f'file {self.fileNumbers[i]} was not found!')
-                    # if fileNotFound, assume the dataset was rejected (may not be the best way of doing this)
-                    continue
+    #         unusedFiles = 0
+    #         for i in range(len(self.fileNumbers)):
+    #             if self.fileNumbers[i] in self.not_found:
+    #                 if not quiet: 
+    #                     print(f'file for {self.fileNumbers[i]} was previously not found')
+    #                 unusedFiles += 1
+    #                 continue
+    #             try:
+    #                 with open(self.base + 
+    #                           filePath.format(self.source, color, self.fileNumbers[i], psfN), 'rb') as file:
+    #                     hsmResult = pickle.load(file)
+    #             except FileNotFoundError:
+    #                 unusedFiles += 1
+    #                 self.not_found.append(self.fileNumbers[i])
+    #                 if not quiet: 
+    #                     print(f'file {self.fileNumbers[i]} was not found!')
+    #                 # if fileNotFound, assume the dataset was rejected (may not be the best way of doing this)
+    #                 continue
                     
-                if (np.array([hsmResult[j].error_message != '' for j in range(int(psfN))])).any():
-                    # do something 
-                    if not quiet: 
-                        print(f'dataset {self.fileNumbers[i]} has an HSM error in moments estimation!')
-                else:
-                    shears[:, i-unusedFiles, :] = np.array([[hsmResult[j].observed_shape.g1, 
-                                                             hsmResult[j].observed_shape.g2] 
-                                                            for j in range(int(psfN))]).T
-                    sizes[i-unusedFiles, :] = np.array([hsmResult[j].moments_sigma for j in range(int(psfN))])
-                    rho4s[i-unusedFiles, :] = np.array([hsmResult[j].moments_rho4 for j in range(int(psfN))])
+    #             if (np.array([hsmResult[j].error_message != '' for j in range(int(psfN))])).any():
+    #                 # do something 
+    #                 if not quiet: 
+    #                     print(f'dataset {self.fileNumbers[i]} has an HSM error in moments estimation!')
+    #             else:
+    #                 shears[:, i-unusedFiles, :] = np.array([[hsmResult[j].observed_shape.g1, 
+    #                                                          hsmResult[j].observed_shape.g2] 
+    #                                                         for j in range(int(psfN))]).T
+    #                 sizes[i-unusedFiles, :] = np.array([hsmResult[j].moments_sigma for j in range(int(psfN))])
+    #                 rho4s[i-unusedFiles, :] = np.array([hsmResult[j].moments_rho4 for j in range(int(psfN))])
             
-            total_n = len(self.fileNumbers)-unusedFiles
-            self.parameters[psfN][color]['g1'] = shears[0,:total_n]
-            self.parameters[psfN][color]['g2'] = shears[1,:total_n]
-            self.parameters[psfN][color]['g'] = np.sqrt(shears[0,:total_n]**2 + shears[1,:total_n]**2)
-            self.parameters[psfN][color]['size'] = sizes[:total_n] * 2.355 * self.scale[color]
-            self.parameters[psfN][color]['rho4'] = rho4s[:total_n]
+    #         total_n = len(self.fileNumbers)-unusedFiles
+    #         self.parameters[psfN][color]['g1'] = shears[0,:total_n]
+    #         self.parameters[psfN][color]['g2'] = shears[1,:total_n]
+    #         self.parameters[psfN][color]['g'] = np.sqrt(shears[0,:total_n]**2 + shears[1,:total_n]**2)
+    #         self.parameters[psfN][color]['size'] = sizes[:total_n] * 2.355 * self.scale[color]
+    #         self.parameters[psfN][color]['rho4'] = rho4s[:total_n]
             
-            if unusedFiles != 0:
-                if not quiet: 
-                    print(f'beware, {unusedFiles} files (for filter {color}) were not loaded in correctly!')
+    #         if unusedFiles != 0:
+    #             if not quiet: 
+    #                 print(f'beware, {unusedFiles} files (for filter {color}) were not loaded in correctly!')
             
-    def loadAllParameters(self, filePath=None):
-        '''
-        Load all parameter sets by calling self.loadParameterSet()
-        '''
-        for psfN in ['2', '4', '12', '15']:
-            self.loadParameterSet(psfN, filePath=filePath)
+    # def loadAllParameters(self, filePath=None):
+    #     '''
+    #     Load all parameter sets by calling self.loadParameterSet()
+    #     '''
+    #     for psfN in ['2', '4', '12', '15']:
+    #         self.loadParameterSet(psfN, filePath=filePath)
         
-    def analyzeBinnedParameters(self, B=1000):
-        '''
-        For all binned data, compute parameter correlations coefficients and (if not 5s bins) bootstrap errors
-        '''
-        for psfN in ['2', '4', '12']:
-            if self.filters[0] not in self.parameters[psfN].keys():
-                self.loadParameterSet(psfN)
+    # def analyzeBinnedParameters(self, B=1000):
+    #     '''
+    #     For all binned data, compute parameter correlations coefficients and (if not 5s bins) bootstrap errors
+    #     '''
+    #     for psfN in ['2', '4', '12']:
+    #         if self.filters[0] not in self.parameters[psfN].keys():
+    #             self.loadParameterSet(psfN)
             
-        for psfN in ['2', '4', '12']:
-            # Compute correlation coefficients for g1 and g2 in both filters
-            self.R[psfN] = helper.corrDict(self.parameters[psfN], filters=self.filters, parameter='ellipticity')
+    #     for psfN in ['2', '4', '12']:
+    #         # Compute correlation coefficients for g1 and g2 in both filters
+    #         self.R[psfN] = helper.corrDict(self.parameters[psfN], filters=self.filters, parameter='ellipticity')
             
-            if psfN != '12':
-                # Bootstrap correlation coefficients for g1 and g2 in both filters
-                self.bootstrapR[psfN] = helper.corrDict(self.parameters[psfN], filters=self.filters, 
-                                                        parameter='ellipticity', bootstrap=True, B=B)
+    #         if psfN != '12':
+    #             # Bootstrap correlation coefficients for g1 and g2 in both filters
+    #             self.bootstrapR[psfN] = helper.corrDict(self.parameters[psfN], filters=self.filters, 
+    #                                                     parameter='ellipticity', bootstrap=True, B=B)
             
-            # Repeat for size parameter
-            self.R[psfN]['size'] = helper.corrDict(self.parameters[psfN], filters=self.filters, parameter='size')
-            if psfN != '12':
-                self.bootstrapR[psfN]['size'] = helper.corrDict(self.parameters[psfN], filters=self.filters, 
-                                                                parameter='size', bootstrap=True, B=B)
+    #         # Repeat for size parameter
+    #         self.R[psfN]['size'] = helper.corrDict(self.parameters[psfN], filters=self.filters, parameter='size')
+    #         if psfN != '12':
+    #             self.bootstrapR[psfN]['size'] = helper.corrDict(self.parameters[psfN], filters=self.filters, 
+    #                                                             parameter='size', bootstrap=True, B=B)
 
             
     def plot30sParameters(self, psfN, alpha=0.6, fontsize=12, plotArgs=None, limits=(-.18,.11),
@@ -379,46 +379,46 @@ class psfParameters():
         Generate a plot of the impact of centroid motion on PSF parameters.
         '''
         # load centroid dict
-        try:
-            with open(centroidFile.format(self.source), 'rb') as file:
-                centroidDict = pickle.load(file)
-        except FileNotFoundError:
-            print('Please make sure the file exists where you think it does!')
+        # try:
+        #     with open(centroidFile.format(self.source), 'rb') as file:
+        #         centroidDict = pickle.load(file)
+        # except FileNotFoundError:
+        #     print('Please make sure the file exists where you think it does!')
         
-        # load in centroid and save their x and y second moments
-        self.centroidSigma = {}
-        self.centroidVar = {}
-        for color in self.filters:
-            x = np.array([centroid['x'] for (fileN, centroid) in centroidDict[color].items() 
-                          if fileN in self.fileNumbers and fileN not in self.not_found])
-            y = np.array([centroid['y'] for (fileN, centroid) in centroidDict[color].items() 
-                          if fileN in self.fileNumbers and fileN not in self.not_found])
-            self.centroidSigma[color] = [np.sum((x-x.mean(axis=1)[:,None])**2, axis=1)/x.shape[1] - 
-                                         np.sum((y-y.mean(axis=1)[:,None])**2, axis=1)/y.shape[1],
-                                         np.sum((x-x.mean(axis=1)[:,None])*(y-y.mean(axis=1)[:,None]), axis=1)/x.shape[1]]
-            self.centroidVar[color] = np.sqrt(np.sum((x-x.mean(axis=1)[:,None])**2, axis=1)/x.shape[1] + 
-                                              np.sum((y-y.mean(axis=1)[:,None])**2, axis=1)/y.shape[1])
+        # # load in centroid and save their x and y second moments
+        # self.centroidSigma = {}
+        # self.centroidVar = {}
+        # for color in self.filters:
+        #     x = np.array([centroid['x'] for (fileN, centroid) in centroidDict[color].items() 
+        #                   if fileN in self.fileNumbers and fileN not in self.not_found])
+        #     y = np.array([centroid['y'] for (fileN, centroid) in centroidDict[color].items() 
+        #                   if fileN in self.fileNumbers and fileN not in self.not_found])
+        #     self.centroidSigma[color] = [np.sum((x-x.mean(axis=1)[:,None])**2, axis=1)/x.shape[1] - 
+        #                                  np.sum((y-y.mean(axis=1)[:,None])**2, axis=1)/y.shape[1],
+        #                                  np.sum((x-x.mean(axis=1)[:,None])*(y-y.mean(axis=1)[:,None]), axis=1)/x.shape[1]]
+        #     self.centroidVar[color] = np.sqrt(np.sum((x-x.mean(axis=1)[:,None])**2, axis=1)/x.shape[1] + 
+        #                                       np.sum((y-y.mean(axis=1)[:,None])**2, axis=1)/y.shape[1])
         
         fig = plt.figure(figsize=figsize)
         grid = plt.GridSpec(2,2, wspace=.075, hspace=.075, top=.94)
         fig.suptitle('impact of PSF centroid second moments on ellipticity', fontsize=fontsize+2)
         
-        for i in range(2):
-            param = ['g1','g2'][i]
-            y_a = self.parameters['15'][self.filters[0]][param][:,-1]
-            y_b = self.parameters['15'][self.filters[1]][param][:,-1]
+        # for i in range(2):
+        #     param = ['g1','g2'][i]
+        #     y_a = self.parameters['15'][self.filters[0]][param][:,-1]
+        #     y_b = self.parameters['15'][self.filters[1]][param][:,-1]
                         
-            for j in [0,1]:
-                x_a = self.centroidSigma[self.filters[0]][j]*self.scale[self.filters[0]]
-                x_b = self.centroidSigma[self.filters[1]][j]*self.scale[self.filters[1]]
+        #     for j in [0,1]:
+        #         x_a = self.centroidSigma[self.filters[0]][j]*self.scale[self.filters[0]]
+        #         x_b = self.centroidSigma[self.filters[1]][j]*self.scale[self.filters[1]]
                 
-                # calculate correlation coefficients
-                rho_a = np.corrcoef(y_a, x_a, rowvar=False)[0,-1]
-                rho_b = np.corrcoef(y_b, x_b, rowvar=False)[0,-1]
+        #         # calculate correlation coefficients
+        #         rho_a = np.corrcoef(y_a, x_a, rowvar=False)[0,-1]
+        #         rho_b = np.corrcoef(y_b, x_b, rowvar=False)[0,-1]
 
-                # bootstrap uncertainties for these 
-                err_a = np.std(helper.bootstrapCorr(y_a, x_a, B=B))
-                err_b = np.std(helper.bootstrapCorr(y_b, x_b, B=B))
+        #         # bootstrap uncertainties for these 
+        #         err_a = np.std(helper.bootstrapCorr(y_a, x_a, B=B))
+        #         err_b = np.std(helper.bootstrapCorr(y_b, x_b, B=B))
 
                 ax = plt.subplot(grid[i,j])
                 # plot g_i vs difference of second moments for both filters
@@ -490,12 +490,12 @@ class psfParameters():
         '''
         Plot the values of the chromatic exponent against PSF size.
         '''
-        size1 = self.parameters['15'][self.filters[0]]['size'][:,-1]
-        size2 = self.parameters['15'][self.filters[1]]['size'][:,-1]
-        lam1 = self.filters[0]
-        lam2 = self.filters[1]
-        b = (np.log(size1) - np.log(size2)) / (np.log(lam1) - np.log(lam2))
-        self.b = b
+        # size1 = self.parameters['15'][self.filters[0]]['size'][:,-1]
+        # size2 = self.parameters['15'][self.filters[1]]['size'][:,-1]
+        # lam1 = self.filters[0]
+        # lam2 = self.filters[1]
+        # b = (np.log(size1) - np.log(size2)) / (np.log(lam1) - np.log(lam2))
+        # self.b = b
         
         plt.figure(figsize=figsize)
         grid = plt.GridSpec(1, 4, wspace=0, hspace=0)

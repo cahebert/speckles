@@ -7,68 +7,68 @@ import matplotlib.transforms as transforms
 from astropy.io import fits
 import pickle
     
-def filterData(fileNames, headerFile, centroidFile, filterOutliers=False, fwhmWeight=1):
-    '''
-    Function to filter data: accept files that are:
-    - in the bright star catalog 
-    - satisfy a centroid and fwhm size cut
-    '''
-    # load in dict of centroids
-    with open(centroidFile, 'rb') as file:
-        centroidDict = pickle.load(file)
+# def filterData(fileNames, headerFile, centroidFile, filterOutliers=False, fwhmWeight=1):
+#     '''
+#     Function to filter data: accept files that are:
+#     - in the bright star catalog 
+#     - satisfy a centroid and fwhm size cut
+#     '''
+#     # load in dict of centroids
+#     with open(centroidFile, 'rb') as file:
+#         centroidDict = pickle.load(file)
 
-    # load in dict of headers
-    with open(headerFile, 'rb') as file:
-        headerDict = pickle.load(file)
+#     # load in dict of headers
+#     with open(headerFile, 'rb') as file:
+#         headerDict = pickle.load(file)
         
-    accepted = []
-    for fN in fileNames:
-        # throw out a few on purpose:
-        if fN == '190716Z0672' or fN == '190619Z0190': 
-            continue
+#     accepted = []
+#     for fN in fileNames:
+#         # throw out a few on purpose:
+#         if fN == '190716Z0672' or fN == '190619Z0190': 
+#             continue
             
-        if filterOutliers:
-            if fN == '190619Z0122' or fN == '190619Z0130':
-                continue
+#         if filterOutliers:
+#             if fN == '190619Z0122' or fN == '190619Z0130':
+#                 continue
 
-        # is object in bright star catalog
-        try:
-            if headerDict[fN]['object'][:2] != 'HR':
-                continue
-        except KeyError:
-            print(f'{fN} was not in headerDict!')
-            continue
+#         # is object in bright star catalog
+#         try:
+#             if headerDict[fN]['object'][:2] != 'HR':
+#                 continue
+#         except KeyError:
+#             print(f'{fN} was not in headerDict!')
+#             continue
             
-        # is airmass < 1.3
-        try:
-            if headerDict[fN]['AIRMASS'] > 1.3:
-                continue
-        except KeyError:
-            print(f'{fN} was not in headerDict!')
-            continue
+#         # is airmass < 1.3
+#         try:
+#             if headerDict[fN]['AIRMASS'] > 1.3:
+#                 continue
+#         except KeyError:
+#             print(f'{fN} was not in headerDict!')
+#             continue
             
-        # load in HSM fit file
-        with open('../Fits/{}/filter{}/{}_{}psfs.p'.format('Zorro', 562, fN, '15'), 'rb') as file:
-            hsmResult = pickle.load(file)
+#         # load in HSM fit file
+#         with open('../Fits/{}/filter{}/{}_{}psfs.p'.format('Zorro', 562, fN, '15'), 'rb') as file:
+#             hsmResult = pickle.load(file)
 
-        # check HSM result checks out:
-        if (np.array([hsmResult[j].error_message != '' for j in range(int(15))])).any():
-            continue
+#         # check HSM result checks out:
+#         if (np.array([hsmResult[j].error_message != '' for j in range(int(15))])).any():
+#             continue
 
-        # check for centroid + size
-        fwhm = hsmResult[-1].moments_sigma * 2.355
-        try:
-            comR = np.sqrt((centroidDict[562][fN]['x']-128)**2 + (centroidDict[562][fN]['y']-128)**2).mean()
-        except KeyError:
-            print(f'{fN} was not in centroiDict!')
-            continue
+#         # check for centroid + size
+#         fwhm = hsmResult[-1].moments_sigma * 2.355
+#         try:
+#             comR = np.sqrt((centroidDict[562][fN]['x']-128)**2 + (centroidDict[562][fN]['y']-128)**2).mean()
+#         except KeyError:
+#             print(f'{fN} was not in centroiDict!')
+#             continue
 
-        if fwhm*fwhmWeight + comR > 128:
-            continue
+#         if fwhm*fwhmWeight + comR > 128:
+#             continue
             
-        accepted.append(fN)
+#         accepted.append(fN)
         
-    return accepted
+#     return accepted
 
 
 def plotRvT(ax1, ax2, psfN, color, goodSeeing, badSeeing, colors, goodBoot=None, badBoot=None,
@@ -198,129 +198,129 @@ def pearsonEllipse(pearson, ax, label, mean_x, mean_y, scale_x, scale_y, edgecol
     ellipse.set_transform(transf + ax.transData)
     return ax.add_patch(ellipse)
 
-def corrDict(thing, parameter, filters=(562, 832), bootstrap=False, B=1000, N=61):
-    '''
-    Calculate correlation coefficients for PSF parameters
-    Can calculate these using bootstrap samples of original data
-    '''
-    if parameter == 'size':
-        nVars = thing[filters[0]][parameter].shape[1]
-        pairs = [l for k in [[(i,j) for j in range(i,nVars) if i!=j] for i in range(nVars)] for l in k]
-        if bootstrap:
-            if nVars == 2:
-                corrDict = {c: bootstrapCorr(thing[c]['size'][:,0], thing[c]['size'][:,1], B, N)
-                               for c in filters}
-            else:
-                corrDict = {c: {f'{i}{j}': bootstrapCorr(thing[c]['size'][:,i], thing[c]['size'][:,j], B, N)
-                                for (i,j) in pairs} for c in filters}
-        else:
-            if nVars == 2:
-                corrDict = {c: np.corrcoef(thing[c]['size'][:,0], thing[c]['size'][:,1], rowvar=False)[0,-1]
-                               for c in filters}
-            else:
-                corrDict = {c: {f'{i}{j}': np.corrcoef(thing[c]['size'][:,i], thing[c]['size'][:,j], 
-                                                          rowvar=False)[0,-1]
-                                for (i,j) in pairs} for c in filters}
+# def corrDict(thing, parameter, filters=(562, 832), bootstrap=False, B=1000, N=61):
+#     '''
+#     Calculate correlation coefficients for PSF parameters
+#     Can calculate these using bootstrap samples of original data
+#     '''
+#     if parameter == 'size':
+#         nVars = thing[filters[0]][parameter].shape[1]
+#         pairs = [l for k in [[(i,j) for j in range(i,nVars) if i!=j] for i in range(nVars)] for l in k]
+#         if bootstrap:
+#             if nVars == 2:
+#                 corrDict = {c: bootstrapCorr(thing[c]['size'][:,0], thing[c]['size'][:,1], B, N)
+#                                for c in filters}
+#             else:
+#                 corrDict = {c: {f'{i}{j}': bootstrapCorr(thing[c]['size'][:,i], thing[c]['size'][:,j], B, N)
+#                                 for (i,j) in pairs} for c in filters}
+#         else:
+#             if nVars == 2:
+#                 corrDict = {c: np.corrcoef(thing[c]['size'][:,0], thing[c]['size'][:,1], rowvar=False)[0,-1]
+#                                for c in filters}
+#             else:
+#                 corrDict = {c: {f'{i}{j}': np.corrcoef(thing[c]['size'][:,i], thing[c]['size'][:,j], 
+#                                                           rowvar=False)[0,-1]
+#                                 for (i,j) in pairs} for c in filters}
 
-    elif parameter == 'ellipticity':
-        nVars = thing[filters[0]]['g1'].shape[1]
-        pairs = [l for k in [[(i,j) for j in range(i,nVars) if i!=j] for i in range(nVars)] for l in k]
-        if bootstrap:
-            if nVars == 2:
-                corrDict = {ellipticity:
-                               {c: bootstrapCorr(thing[c][ellipticity][:,0], thing[c][ellipticity][:,1], B, N)
-                               for c in filters} for ellipticity in ['g1', 'g2']}
-            else:
-                corrDict = {ellipticity:
-                               {c: {f'{i}{j}': bootstrapCorr(thing[c][ellipticity][:,i], 
-                                                             thing[c][ellipticity][:,j], B, N)
-                                for (i,j) in pairs} for c in filters} for ellipticity in ['g1', 'g2']}
-        else:
-            if nVars == 2:
-                corrDict = {ellipticity:
-                               {c: np.corrcoef(thing[c][ellipticity][:,0], 
-                                               thing[c][ellipticity][:,1], rowvar=False)[0,-1]
-                               for c in filters} for ellipticity in ['g1', 'g2']}
-            else:
-                corrDict = {ellipticity:
-                               {c: {f'{i}{j}': np.corrcoef(thing[c][ellipticity][:,i], 
-                                                           thing[c][ellipticity][:,j], rowvar=False)[0,-1]
-                                for (i,j) in pairs} for c in filters} for ellipticity in ['g1', 'g2']}
-    return corrDict
+#     elif parameter == 'ellipticity':
+#         nVars = thing[filters[0]]['g1'].shape[1]
+#         pairs = [l for k in [[(i,j) for j in range(i,nVars) if i!=j] for i in range(nVars)] for l in k]
+#         if bootstrap:
+#             if nVars == 2:
+#                 corrDict = {ellipticity:
+#                                {c: bootstrapCorr(thing[c][ellipticity][:,0], thing[c][ellipticity][:,1], B, N)
+#                                for c in filters} for ellipticity in ['g1', 'g2']}
+#             else:
+#                 corrDict = {ellipticity:
+#                                {c: {f'{i}{j}': bootstrapCorr(thing[c][ellipticity][:,i], 
+#                                                              thing[c][ellipticity][:,j], B, N)
+#                                 for (i,j) in pairs} for c in filters} for ellipticity in ['g1', 'g2']}
+#         else:
+#             if nVars == 2:
+#                 corrDict = {ellipticity:
+#                                {c: np.corrcoef(thing[c][ellipticity][:,0], 
+#                                                thing[c][ellipticity][:,1], rowvar=False)[0,-1]
+#                                for c in filters} for ellipticity in ['g1', 'g2']}
+#             else:
+#                 corrDict = {ellipticity:
+#                                {c: {f'{i}{j}': np.corrcoef(thing[c][ellipticity][:,i], 
+#                                                            thing[c][ellipticity][:,j], rowvar=False)[0,-1]
+#                                 for (i,j) in pairs} for c in filters} for ellipticity in ['g1', 'g2']}
+#     return corrDict
         
-def bootstrapCorr(thing1, thing2, B, N=61):
-    '''
-    Bootstrap a correlation coefficient between thing1 and thing2, sampling B times. Dataset length N.
-    '''
-    idx = range(len(thing1))
-    samples = []
-    for i in range(B):
-        resampledIdx = bootstrap(idx, N=N)
-        samples.append(np.corrcoef(thing1[resampledIdx], thing2[resampledIdx], rowvar=False)[0,-1])
-    return samples
+# def bootstrapCorr(thing1, thing2, B, N=61):
+#     '''
+#     Bootstrap a correlation coefficient between thing1 and thing2, sampling B times. Dataset length N.
+#     '''
+#     idx = range(len(thing1))
+#     samples = []
+#     for i in range(B):
+#         resampledIdx = bootstrap(idx, N=N)
+#         samples.append(np.corrcoef(thing1[resampledIdx], thing2[resampledIdx], rowvar=False)[0,-1])
+#     return samples
     
-def bootstrap(thing, N=61):
-    '''
-    resample dataset thing of length N
-    '''
-    return sklearn.utils.resample(thing, replace=True, n_samples=N)
+# def bootstrap(thing, N=61):
+#     '''
+#     resample dataset thing of length N
+#     '''
+#     return sklearn.utils.resample(thing, replace=True, n_samples=N)
     
-def powerLaw(t, p, asymptote=0):
-    '''
-    return a power law at points t, with exponent alpha, amplitude a, and an optional asymptote.
-    '''
-    if len(p) == 2:
-        return p[0] * t**p[1] + asymptote
-    elif len(p) == 3:
-        return np.array([p[0] if time<p[2] else p[0] * (time-p[2])**p[1] for time in t]) + asymptote
+# def powerLaw(t, p, asymptote=0):
+#     '''
+#     return a power law at points t, with exponent alpha, amplitude a, and an optional asymptote.
+#     '''
+#     if len(p) == 2:
+#         return p[0] * t**p[1] + asymptote
+#     elif len(p) == 3:
+#         return np.array([p[0] if time<p[2] else p[0] * (time-p[2])**p[1] for time in t]) + asymptote
     
-def fitDropoff(ellipticity, pts=np.logspace(-1.22,1.79,15), expectedAsymptote=None, delay=False):  
-    '''
-    Fit a powerlaw to ellipticity data and return the best fit parameters. 
-    Optionally can:
-    - fix the asymptotic value to a nonzero value
-    - have a delay in time before the dropoff starts
-    '''
-    if expectedAsymptote is None:
-        expectedAsymptote = np.zeros(2)
+# def fitDropoff(ellipticity, pts=np.logspace(-1.22,1.79,15), expectedAsymptote=None, delay=False):  
+#     '''
+#     Fit a powerlaw to ellipticity data and return the best fit parameters. 
+#     Optionally can:
+#     - fix the asymptotic value to a nonzero value
+#     - have a delay in time before the dropoff starts
+#     '''
+#     if expectedAsymptote is None:
+#         expectedAsymptote = np.zeros(2)
        
-    def powerLaw1(t, *p):
-        return powerLaw(t, p, asymptote=expectedAsymptote[0])
-    def powerLaw2(t, *p):
-        return powerLaw(t, p, asymptote=expectedAsymptote[1])
+#     def powerLaw1(t, *p):
+#         return powerLaw(t, p, asymptote=expectedAsymptote[0])
+#     def powerLaw2(t, *p):
+#         return powerLaw(t, p, asymptote=expectedAsymptote[1])
 
-    if delay:
-        fitParams = np.zeros((2,3))
-        p0 = [0.5, -.2, 0]
-        bounds = [[-np.inf,-1, 0], [np.inf, 0, 60.]]
-    else:
-        fitParams = np.zeros((2,2))
-        p0=[0.5, -.2]
-        bounds=[[-np.inf, -1], [np.inf, 0]]
+#     if delay:
+#         fitParams = np.zeros((2,3))
+#         p0 = [0.5, -.2, 0]
+#         bounds = [[-np.inf,-1, 0], [np.inf, 0, 60.]]
+#     else:
+#         fitParams = np.zeros((2,2))
+#         p0=[0.5, -.2]
+#         bounds=[[-np.inf, -1], [np.inf, 0]]
         
-    for i in range(2):
-        if i == 0:
-            fun = powerLaw1
-        else: 
-            fun = powerLaw2
-        fitParams[i], _ = curve_fit(fun, xdata=pts, ydata=ellipticity[i], p0=p0, bounds=bounds)
+#     for i in range(2):
+#         if i == 0:
+#             fun = powerLaw1
+#         else: 
+#             fun = powerLaw2
+#         fitParams[i], _ = curve_fit(fun, xdata=pts, ydata=ellipticity[i], p0=p0, bounds=bounds)
     
-    return fitParams
+#     return fitParams
     
-def bootstrapDropoff(ellipticity, B=100, pts=np.logspace(-1.22,1.79,15), expectedAsymptote=None, delay=False):
-    '''
-    Bootstrap ellipticity dropoff: return set of B best fit parameters from bootstrap samples drawn from data
-    '''
-    N = ellipticity.shape[1]
-    if delay:
-        bootstrapParameters = np.empty((2, B, 3))
-    else:
-        bootstrapParameters = np.empty((2, B, 2))
-    for b in range(B):
-        samples = [bootstrap(ellipticity[i]) for i in range(2)]
-        y = np.mean(samples, axis=1)
-        bootstrapParameters[:, b, :] = fitDropoff(y, expectedAsymptote=expectedAsymptote, delay=delay)
-    return bootstrapParameters
+# def bootstrapDropoff(ellipticity, B=100, pts=np.logspace(-1.22,1.79,15), expectedAsymptote=None, delay=False):
+#     '''
+#     Bootstrap ellipticity dropoff: return set of B best fit parameters from bootstrap samples drawn from data
+#     '''
+#     N = ellipticity.shape[1]
+#     if delay:
+#         bootstrapParameters = np.empty((2, B, 3))
+#     else:
+#         bootstrapParameters = np.empty((2, B, 2))
+#     for b in range(B):
+#         samples = [bootstrap(ellipticity[i]) for i in range(2)]
+#         y = np.mean(samples, axis=1)
+#         bootstrapParameters[:, b, :] = fitDropoff(y, expectedAsymptote=expectedAsymptote, delay=delay)
+#     return bootstrapParameters
 
 def addExpTimeAxis(fig, subplotN, fntsize=12, label=True, tickLabels=True):
     '''

@@ -3,6 +3,32 @@ import galsim
 import pickle
 from scipy.optimize import curve_fit
 import sklearn.utils
+import errno
+import os
+from astropy.io import fits
+
+def data_loader(fits_path):
+    '''load fits and extract image and header data'''
+    imgs = np.zeros((len(fits_path)*1000, 256, 256))
+    header = []
+    for i, f in enumerate(fits_path):
+        try:
+            hdu = fits.open(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), str(f))
+        data = hdu[0].data.astype('float')
+
+        if data.shape[1] != 256 or data.shape[2] != 256:
+            return False
+
+        if 'r' in f: # this is the 832 wavelength
+            data = data[:,:,::-1]
+        
+        imgs[i*1000:(i+1)*1000] = data
+        header.append(hdu[0].header)
+        hdu.close()
+
+    return imgs, header
 
 def image_com(image, exp_mask=False):
     '''
@@ -34,29 +60,32 @@ def image_fwhm(img, x, y):
         subtract_background([img])
 
     fwhm = 0
-    for coord_j, slice_i in zip([y,x], [img[x,:], img[:,y]]):
-        # find what's above/below the half max
-        hm_rel = slice_i - slice_i.max()/2
+    try:
+        for coord_j, slice_i in zip([y,x], [img[x,:], img[:,y]]):
+            # find what's above/below the half max
+            hm_rel = slice_i - slice_i.max()/2
 
-        # find where we change from above to below
-        dCoord = np.sign(hm_rel[:-1]) - np.sign(hm_rel[1:])
-        right = np.where(dCoord>0)[0]
-        left = np.where(dCoord<0)[0]
+            # find where we change from above to below
+            dCoord = np.sign(hm_rel[:-1]) - np.sign(hm_rel[1:])
+            right = np.where(dCoord>0)[0]
+            left = np.where(dCoord<0)[0]
 
-        # check for the derivative actually working
-        if len(right) == 0 and len(left) == 0:
-            print('something is fishy! check image subtraction')
-        if len(right) == 0:
-            if len(left) != 0:
-                # if right side doesn't cross zero, make fwhm twice the left to COM distance
-                fwhm += 2 * abs(left[0] - coord_j)
-        elif len(left) == 0:
-            if len(right) != 0:
-                # if left side doesn't cross zero, make fwhm twice the right to COM distance
-                fwhm += 2 * abs(right[-1] - coord_j)
-        else:
-            # if neither side is zero, difference is FWHM
-            fwhm += abs(right[-1] - left[0])
+            # check for the derivative actually working
+            if len(right) == 0 and len(left) == 0:
+                print('something is fishy! check image subtraction')
+            if len(right) == 0:
+                if len(left) != 0:
+                    # if right side doesn't cross zero, make fwhm twice the left to COM distance
+                    fwhm += 2 * abs(left[0] - coord_j)
+            elif len(left) == 0:
+                if len(right) != 0:
+                    # if left side doesn't cross zero, make fwhm twice the right to COM distance
+                    fwhm += 2 * abs(right[-1] - coord_j)
+            else:
+                # if neither side is zero, difference is FWHM
+                fwhm += abs(right[-1] - left[0])
+    except IndexError:
+        return False
         
     # return averaged FWHM
     return fwhm / 2
@@ -112,7 +141,8 @@ def single_exposure_HSM(img, exp_mask=False, subtract=True, max_iters=400,
     # guesstimate center and size of PSF as start for HSM
     comx, comy = image_com(img)
     fwhm = image_fwhm(img, comx, comy)
-    guestimateSig = fwhm / 2.355
+    if not fwhm: guestimateSig = 50
+    else: guestimateSig = fwhm / 2.355
 
     badPix = galsim.Image(1 - exp_mask, xmin=0, ymin=0) if exp_mask else None
 
@@ -137,10 +167,10 @@ def single_exposure_HSM(img, exp_mask=False, subtract=True, max_iters=400,
     return hsmOut
 
 
-def calculate_centroids(imgs, N=200, subtract=False):
+def calculate_centroids(imgs, step=5, subtract=False):
     '''calculate the centroids of the image series using HSM
-    ::N:: sum 1000/N images together to calculate the centroid on'''
-    step = int(1000/N)
+    ::N:: sum N images together to calculate the centroid on'''
+    N = int(imgs.shape[0]/step)
     centroids = np.zeros((2, N))
     
     for i in range(N):

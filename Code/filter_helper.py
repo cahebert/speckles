@@ -1,6 +1,67 @@
 import numpy as np
 from astropy.io import fits
 import pickle
+import os
+
+
+def parse_log_file(obsdate, star_type='both', zpath='/Volumes/My Passport/Zorro/'):
+    '''open zorro log file and extract information about the stars.
+    Returns a dict of either bright or faint stars or both as indicated by user.
+    Faint stars returned only if they have >3*60s of observing time'''
+    zpath = zpath + obsdate + '/'
+    # list of files in directory to cross reference when making list of file names
+    dir_files = [f.split('.')[0] for f in os.listdir(zpath) if os.path.isfile(os.path.join(zpath, f)) and '.bz2' in f]
+
+    file_object  = open(zpath + obsdate + 'zorrolog', "r") 
+    contents = file_object.read()
+
+    lines = [c for c in contents.split('\n')]
+    split_lines = [[l.strip(' ') for l in h.split('\t')] for h in lines]
+
+    # split lines are, in order:
+    # 'star', 'b number', 'r number', 'time', 'b gain', 'r gain', 'coord1', 'coord2', 'obsspeed', 'campaign']
+    obj_list = set([s[0] for s in split_lines if s[0]!=''])
+
+    obj_dict = {}
+
+    for obj in obj_list:
+        obj_dict[obj + 'b'] = {'fn': [[df for df in dir_files if s[1] in df][0] for s in split_lines if s[0] == obj], 
+                               'gain': [s[4] for s in split_lines if s[0] == obj][0],
+                               'times': [s[3] for s in split_lines if s[0] == obj],
+                               'coords': [s[6] for s in split_lines if s[0] == obj][0],
+                               'campaign': [s[-1] for s in split_lines if s[0] == obj][0]}
+
+
+        obj_dict[obj + 'r'] = {'fn': [[df for df in dir_files if s[2] in df][0] for s in split_lines if s[0] == obj], 
+                               'gain': [s[5] for s in split_lines if s[0] == obj][0],
+                               'times': [s[3] for s in split_lines if s[0] == obj],
+                               'coords': [s[7] for s in split_lines if s[0] == obj][0],
+                               'campaign': [s[-1] for s in split_lines if s[0] == obj][0]}
+
+        # {obj: {'fn': [[df for df in dir_files if s[1] in df][0] for s in split_lines if s[0] == obj], 
+        #               'gain': [s[4:6] for s in split_lines if s[0] == obj][0],
+        #               'times': [s[3] for s in split_lines if s[0] == obj],
+        #               'coords': [s[6:8] for s in split_lines if s[0] == obj][0],
+        #               'campaign': [s[-1] for s in split_lines if s[0] == obj][0]} for obj in obj_list}
+
+    if star_type == 'bright':
+        return {k:d for k,d in obj_dict.items() if 'HR' in k}
+    elif star_type == 'faint':
+        return {k:d for k,d in obj_dict.items() if 'HR' not in k if len(d['fn'])>3}
+
+def match_filter_pairs(info_dict):
+    '''go through the info dict and return version with datasets which have *both* filters accepted'''
+    # only include in final save if both filters are accepted!!
+    good_r_files = [k for k in info_dict.keys() if 'r' in k]
+    good_b_files = [k for k in info_dict.keys() if 'b' in k]
+    # all r data that also passed in b filter
+    overlap_r_files = [f for f in good_r_files if f.replace('r','b') in good_b_files]
+    # all b data that also passed in r filter
+    overlap_b_files = [f for f in good_b_files if f.replace('b','r') in good_r_files]
+    # want to keep the union of these two above lists
+    overlap = overlap_r_files + overlap_b_files
+
+    return {f:info_dict[f] for f in overlap}
 
 def find_big_gap(n, bins, sigma, i=0):
     '''

@@ -6,26 +6,21 @@ import os
 import measurement_helper as mhelp
 
 class ExtractParameters():
-    def __init__(self, fits_path, mask, source='data'):
+    def __init__(self, fits_path_list, mask, source='data'):
         '''load the data into the class'''
-        if 'r' in fits_path.split('/')[-1]:
+        if 'r' in fits_path_list[0].split('/')[-1]:
             self.color = 'r'
-        elif 'b' in fits_path.split('/')[-1]:
+        elif 'b' in fits_path_list[0].split('/')[-1]:
             self.color = 'b'
 
         self.source = source
         self.mask = mask
 
-        try:
-            hdu = fits.open(fits_path)
-        except FileNotFoundError:
-            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), str(fits_path))
-
-        if self.color == 'b': # this is the 562 wavelength
-            self.imgs = hdu[0].data.astype('float')
-        elif self.color == 'r': # this is the 832 wavelength
-            self.imgs = hdu[0].data.astype('float')[:,:,::-1]
-        hdu.close()
+        loaded = mhelp.data_loader(fits_path_list)
+        if loaded:
+            self.imgs, _ = loaded
+        else: 
+            return False
 
         mhelp.subtract_background(self.imgs, exp_mask_dict=self.mask)
 
@@ -43,8 +38,6 @@ class ExtractParameters():
 
         binned = [self.imgs[n * bin_size:(n + 1) * bin_size].sum(axis=0) / bin_size for n in range(n_bins)]
         return binned, bin_exp, False
-
-        ### not taking care of masks at all: this assumes that once we bin exposures we don't need to worry.
 
     def accumulate_psf(self, return_all=False, manual=False):
         '''
@@ -73,8 +66,6 @@ class ExtractParameters():
             
             return accumulated, indices, False
 
-        ## Also not taking care of changing masks yet!!
-
     def extract_parameters(self, bins=[5, 15, 30, 60, 'acc']):
         '''
         measure psf parameters for input settings, returns dict of parameters.
@@ -93,51 +84,27 @@ class ExtractParameters():
 
         return parameters
 
-# potentially useful old code to change index of masked exposures (but also wrong cause assumes only one mask?)
-    # # make a new mask dict to reflect index changes of accumulating exposures
-    # if maskDict:
-    #     expid = [i for i in maskDict.keys()][0]
-    #     # if accumulating exposures
-    #     if numBins is None:
-    #         if indices is not None:
-    #             maskedExps = np.arange(15)[np.array(indices) >= expid]
-    #             newMaskDict = {k: maskDict[expid] for k in maskedExps}
-    #         else:
-    #             maskedExps = [i for i in np.arange(1000) if i >= expid]
-    #             newMaskDict = {k: maskDict[expid] for k in maskedExps}
-
-    #     # if binning exposures
-    #     else:
-    #         maskedExps = [i for i in np.arange(numBins)*(1000/numBins) if i >= expid]
-    #         newMaskDict = {k: maskDict[expid] for k in maskedExps}
-    # else:
-    #     newMaskDict = None
-
-
 if __name__ == '__main__':
     from argparse import ArgumentParser
     parser = ArgumentParser()
 
-    parser.add_argument("--data_folder", type=str, default='MayHRStars/', 
-                        help="path to desired data directory within Zorro (and name for info dict")
+    parser.add_argument("--obsdate", type=str, default='20190913', 
+                        help="path to desired data directory within Zorro")
     parser.add_argument("--local_path", type=str, 
                         default='/Users/clairealice/Documents/research/speckles/intermediates/', 
                         help="path to local directory for saving output")
-    parser.add_argument('-zorro', type=str, default='/Volumes/My Passport/Zorro/', 
+    parser.add_argument('--zorro', type=str, default='/Volumes/My Passport/Zorro/', 
                         help="path to main Zorro data directory")
-    parser.add_argument('-bins', default=[5, 15, 30, 60, 'acc'])
     parser.add_argument('-masks', default=False, action='store_true')
+    parser.add_argument('--stars', default='bright', type=str)
     args = parser.parse_args()
     
-    data_path = os.path.join(args.zorro, args.data_folder) 
-    dict_path = os.path.join(args.local_path, 
-                             f"accepted_info_{args.data_folder.strip('/')}.p")
+    data_path = os.path.join(args.zorro, args.obsdate) 
+    dict_path = os.path.join(args.local_path, f"accepted_info_{args.obsdate}_{args.stars}.p")
     if args.masks:
-       result_path = os.path.join(args.local_path, 
-                               f"parameters_{args.data_folder.strip('/')}_wmask.p")
+       result_path = os.path.join(args.local_path, f"parameters_{args.obsdate}_{args.stars}_wmask.p")
     else:
-       result_path = os.path.join(args.local_path, 
-                             f"parameters_{args.data_folder.strip('/')}.p")
+       result_path = os.path.join(args.local_path, f"parameters_{args.obsdate}_{args.stars}.p")
 
     # try to open info dict
     try:
@@ -146,27 +113,26 @@ if __name__ == '__main__':
         print("warning, no info dict found!")
         raise FileNotFoundError
 
-    # list all the files: these are the keys of the info dict
-    data_files = list(info_dict.keys())
-
+    if args.stars == 'bright':
+        exp_bins = [5, 15, 30, 60, 'acc']
+    elif args.stars == 'faint':
+        exp_bins = [30, 60]
     # initialize result dict as nested dictionary, with exposure lengths as outermost key
-    result_dict = {exps:{} for exps in args.bins}
+    result_dict = {exps:{} for exps in exp_bins}
 
-    for f in data_files:
+    for s in list(info_dict.keys()):
         if args.masks:
-            try:
-                mask = info_dict[f]['mask']
-            except KeyError:
-                mask = False
+            try: mask = info_dict[s]['mask']
+            except KeyError: mask = False
         else: mask = False
 
-        print(f)
-        data = ExtractParameters(os.path.join(data_path, f + '.fits.bz2'), mask)
-        out = data.extract_parameters(bins=args.bins)
+        print(s)
+        data = ExtractParameters(info_dict[s]['fits'], mask)
+        out = data.extract_parameters(bins=exp_bins)
         if out: 
             # save results into result_dict 
-            for exps in args.bins:
-                result_dict[exps][f] = out[exps]
+            for exps in exp_bins:
+                result_dict[exps][s] = out[exps]
 
     try:
         pickle.dump(result_dict, open(result_path, 'wb'))

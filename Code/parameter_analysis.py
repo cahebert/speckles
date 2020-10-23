@@ -6,23 +6,19 @@ import pickle
 import errno
 import os
 from scipy.optimize import curve_fit
+import analysis_helper_new as ahelp
 
 class AnalyzeParameters():
-    def __init__(self, result_path, info_path, exp_type, source='data'):
+    def __init__(self, result_paths, info_paths, exp_type, source='data'):
 
-        # try to open result dict
-        try:
-            result_dict = pickle.load(open(result_path, 'rb'))
-        except FileNotFoundError:
-            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), str(result_dict))
-        # try to open info dict
-        try:
-            info_dict = pickle.load(open(info_path, 'rb'))
-        except FileNotFoundError:
-            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), str(info_path))
+        result_dict = ahelp.load_dicts(result_paths, exp_type)
+        info_dict = ahelp.load_dicts(info_paths)
 
         self.filters = (562, 832)
+        self.fdict = {'r':832, 'b':562}
         self.source = source
+        self.exp_type = exp_type
+
 
         # double check that the simulations follow this plate scale thing too
         self.scale = {self.filters[0]: .00991, self.filters[1]: .01093,
@@ -31,11 +27,12 @@ class AnalyzeParameters():
         # use a sub function to sort through the results /info dict and pull out the info desired
         self.process_results(result_dict, info_dict, exp_type)
 
-    def process_results(self, results, info_dict, exp_type, quiet=True):
+    def process_results(self, results, info_dict, quiet=True):
         '''run through result dict and output arrays/dataframes for each kind of result'''
-        self.exp_type = exp_type
-
-        sub_dict = results[exp_type]
+        
+        # take only the datasets which have total integration time of 300s:
+        sub_dict = {k:l for (k,l) in results.items() if len(l)*int(self.exp_type) == 300}
+        
         b_keys = np.sort([k for k in sub_dict.keys() if 'b' in k])
     
         g1 = {'b':[], 'r':[]}
@@ -47,26 +44,29 @@ class AnalyzeParameters():
         for bk in b_keys:
             rk = bk.replace('b','r')
 
-            b_errors = np.array([hsm_out.error_message != '' for hsm_out in sub_dict[bk]])
-            r_errors = np.array([hsm_out.error_message != '' for hsm_out in sub_dict[rk]])
-            
-            # check for error messages:
-            if (b_errors).any() or (r_errors).any():
-                if not quiet: 
-                    print(f'dataset {bk} has an HSM error in moments estimation!')
+            try:
+                b_errors = np.array([hsm_out.error_message != '' for hsm_out in sub_dict[bk]])
+                r_errors = np.array([hsm_out.error_message != '' for hsm_out in sub_dict[rk]])
+            except KeyError:
+                continue
             else:
-                # if no errors, put the shapes and sizes of results 
-                for k, filt in zip([bk,rk], ['b','r']):
-                    g1[filt].append([hsm_out.observed_shape.g1 for hsm_out in sub_dict[k]])
-                    g2[filt].append([hsm_out.observed_shape.g2 for hsm_out in sub_dict[k]])
-                    size[filt].append([hsm_out.moments_sigma * 2.355 * self.scale[filt] for hsm_out in sub_dict[k]])
+                # check for error messages:
+                if (b_errors).any() or (r_errors).any():
+                    if not quiet: 
+                        print(f'dataset {bk} has an HSM error in moments estimation!')
+                else:
+                    # if no errors, put the shapes and sizes of results 
+                    for k, filt in zip([bk,rk], ['b','r']):
+                        g1[filt].append([hsm_out.observed_shape.g1 for hsm_out in sub_dict[k]])
+                        g2[filt].append([hsm_out.observed_shape.g2 for hsm_out in sub_dict[k]])
+                        size[filt].append([hsm_out.moments_sigma * 2.355 * self.scale[filt] for hsm_out in sub_dict[k]])
 
-                    x[filt].append(info_dict[k]['centroids']['x'] * self.scale[filt])
-                    y[filt].append(info_dict[k]['centroids']['y'] * self.scale[filt])
+                        x[filt].append(info_dict[k]['centroids']['x'] * self.scale[filt])
+                        y[filt].append(info_dict[k]['centroids']['y'] * self.scale[filt])
 
         self.g1 = {k: np.array(l).T for (k,l) in g1.items()}
         self.g2 = {k: np.array(l).T for (k,l) in g2.items()}
-        self.g = {k: np.hypot(g1[k], g2[k]).T for k in g1.keys()}
+        self.g = {k: np.hypot(self.g1[k], self.g2[k]) for k in g1.keys()}
         self.size = {k: np.array(l).T for (k,l) in size.items()}
         self.x = {k: np.array(l).T for (k,l) in x.items()}
         self.y = {k: np.array(l).T for (k,l) in y.items()}
@@ -89,7 +89,7 @@ class AnalyzeParameters():
 
             for filt in ['r','b']:
                 if bootstrap:
-                    self.corrs[param][filt] = {f'{i}{j}': bootstrap_correlation(bin_dict[filt][i], bin_dict[filt][j], B)
+                    self.corrs[param][filt] = {f'{i}{j}': ahelp.bootstrap_correlation(bin_dict[filt][i], bin_dict[filt][j], B)
                                                for (i,j) in bin_pairs}
                 else:
                     self.corrs[param][filt] = {f'{i}{j}': np.corrcoef(bin_dict[filt][i], bin_dict[filt][j], rowvar=False)[0,-1] 
@@ -120,9 +120,9 @@ class AnalyzeParameters():
             asymptote = {'b':0, 'r':0}
            
         def power_law_b(t, *p):
-            return power_law(t, p, asymptote=asymptote['b'])
+            return ahelp.power_law(t, p, asymptote=asymptote['b'])
         def power_law_r(t, *p):
-            return power_law(t, p, asymptote=asymptote['r'])
+            return ahelp.power_law(t, p, asymptote=asymptote['r'])
 
         if delay:
             p0 = [0.5, -.2, 0]
@@ -157,68 +157,37 @@ class AnalyzeParameters():
         for p in ['g1', 'g2']:
             for filt in ['b', 'r']:
                 y = self.g1[p][filt]
-                self.centroid_moms = centroid_moments(self.x[filt], self.y[filt])
+                self.centroid_moms = ahelp.centroid_moments(self.x[filt], self.y[filt])
 
                 rho_delta = np.corrcoef(y, self.centroid_moms['delta_xsq_ysq'], rowvar=False)[0,-1]
                 rho_xy = np.corrcoef(y, self.centroid_moms['sigma_xy'], rowvar=False)[0,-1]
 
-                err_delta = np.std(bootstrap_correlation(y, self.centroid_moms['delta_xsq_ysq'], B))
-                err_xy = np.std(bootstrap_correlation(y, self.centroid_moms['sigma_xy'], B))
+                err_delta = np.std(ahelp.bootstrap_correlation(y, self.centroid_moms['delta_xsq_ysq'], B))
+                err_xy = np.std(ahelp.bootstrap_correlation(y, self.centroid_moms['sigma_xy'], B))
 
                 self.corrs['centroid'][filt][p] = {'rho_delta': rho_delta, 'rho_xy': rho_xy,
                                                    'err_delta': err_delta, 'err_xy': err_xy}
-
-
-def centroid_moments(x, y):
-    '''return second moments of coordinates x and y'''
-    if len(x) != len(y): 
-        raise ValueError('x and y must have the same length!')
-    sigma_xy = np.sum((x-x.mean(axis=0))*(y-y.mean(axis=0)), axis=0) / x.shape[0]
-    sigma_x_sq = np.var(x, axis=0)
-    sigma_y_sq = np.var(y, axis=0)
-    return {'delta_xsq_ysq': sigma_x_sq - sigma_y_sq, 'sigma_xy': sigma_xy}
-
-def power_law(t, p, asymptote=0):
-    '''
-    return a power law at points t, with exponent alpha, amplitude a, and an optional asymptote.
-    '''
-    if len(p) == 2:
-        return p[0] * t**p[1] + asymptote
-    elif len(p) == 3:
-        return np.array([p[0] if time<p[2] else p[0] * (time-p[2])**p[1] for time in t]) + asymptote
-    
-def bootstrap_correlation(thing1, thing2, B):
-    '''
-    Bootstrap a correlation coefficient between thing1 and thing2, sampling B times. 
-    '''
-    if len(thing1) != len(thing2): raise ValueError('things to correlate must have the same length!')
-
-    idx = range(len(thing1))
-    boot_corr_coefs = np.zeros(len(thing1))
-    for i in range(B):
-        resampled = sklearn.utils.resample(idx, replace=True, n_samples=len(idx)-1)
-        boot_corr_coefs[i] = np.corrcoef(thing1[resampled], thing2[resampled], rowvar=False)[0,-1]
-    return boot_corr_coefs
 
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
     parser = ArgumentParser()
 
-    parser.add_argument("--data_folder", type=str, default='MayHRStars/', 
-                        help="path to desired data directory within Zorro (and name for info dict")
+    parser.add_argument("--obsdate", type=str, default='20190913', 
+                        help="path to desired data directory within Zorro")
     parser.add_argument("--local_path", type=str, help="path to local directory for saving output",
                         default='/Users/clairealice/Documents/research/speckles/intermediates/')
-    parser.add_argument('-bins', default=[5, 15, 30, 60, 'acc'])
+    parser.add_argument('--stars', default='bright', type=str)
     parser.add_argument('-masks', default=False, action='store_true')
     args = parser.parse_args()
-    
-    info_path = os.path.join(args.local_path, f"accepted_info_{args.data_folder.strip('/')}.p")
+
+    dict_path = os.path.join(args.local_path, f"accepted_info_{args.obsdate}_{args.stars}.p")
 
     if args.masks:
-       result_path = os.path.join(args.local_path, f"parameters_{args.data_folder.strip('/')}_wmask.p")
+       result_path = os.path.join(args.local_path, f"parameters_{args.obsdate}_{args.stars}_wmask.p")
     else:
-       result_path = os.path.join(args.local_path, f"parameters_{args.data_folder.strip('/')}.p")
+       result_path = os.path.join(args.local_path, f"parameters_{args.obsdate}_{args.stars}.p")
+
 
     data = AnalyzeParameters(result_path, info_path, 30)
     # data.correlate_bins()

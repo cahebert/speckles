@@ -19,28 +19,28 @@ class psfParameters():
         Initialize an instance of this class for analyzing HSM outpute for speckle images.
         This class is associated with datasets from two wavelengths at a given pixel scale
         '''
-        self.filters = filters
-        self.source = source
+#         self.filters = filters
+#         self.source = source
         
-#         if source=='Zorro':
-        self.scale = {self.filters[0]: .00992, self.filters[1]: .01095}
+# #         if source=='Zorro':
+#         self.scale = {self.filters[0]: .00992, self.filters[1]: .01095}
 #         else:
 #             self.scale = {self.filters[0]: .011, self.filters[1]: .011}
             
-        self.base = baseDir
-        self.fileNumbers = [f.strip(' ') 
-                            for f in np.loadtxt(self.base + 
-                                                fileNumbers.format(self.source), delimiter=',', dtype='str')]
-        self.parameters = {psfN:{} for psfN in ['2', '4', '12', '15']}
+        # self.base = baseDir
+        # self.fileNumbers = [f.strip(' ') 
+        #                     for f in np.loadtxt(self.base + 
+        #                                         fileNumbers.format(self.source), delimiter=',', dtype='str')]
+        # self.parameters = {psfN:{} for psfN in ['2', '4', '12', '15']}
         
-        self.eDropoff = {}
-        self.bootstrapE = {}
+        # self.eDropoff = {}
+        # self.bootstrapE = {}
         
-        self.R = {psfN:{} for psfN in ['2', '4', '12']}
-        self.bootstrapR = {psfN:{} for psfN in ['2', '4', '12']}
+        # self.R = {psfN:{} for psfN in ['2', '4', '12']}
+        # self.bootstrapR = {psfN:{} for psfN in ['2', '4', '12']}
         
-        # plotting settings
-        self.colors = {self.filters[0]: plottingColors[0], self.filters[1]: plottingColors[1]}
+        # # plotting settings
+        # self.colors = {self.filters[0]: plottingColors[0], self.filters[1]: plottingColors[1]}
             
     # def loadParameterSet(self, psfN, filePath=None, quiet=False):
     #     '''
@@ -139,94 +139,94 @@ class psfParameters():
     #                                                             parameter='size', bootstrap=True, B=B)
 
             
-    def plot30sParameters(self, psfN, alpha=0.6, fontsize=12, plotArgs=None, limits=(-.18,.11),
-                             figsize=(11,4), save=False, ellipse=False, ellipseArgs=None):
-        '''
-        Plot 30s PSF parameters and their correlation ellipses.
-        '''
-        # plot correlation of 30s PSFs
-        plt.figure(figsize=figsize)
-        ax1 = plt.subplot(131)
-        ax2 = plt.subplot(132)
-        ax3 = plt.subplot(133)
+    # def plot30sParameters(self, psfN, alpha=0.6, fontsize=12, plotArgs=None, limits=(-.18,.11),
+    #                          figsize=(11,4), save=False, ellipse=False, ellipseArgs=None):
+    #     '''
+    #     Plot 30s PSF parameters and their correlation ellipses.
+    #     '''
+    #     # plot correlation of 30s PSFs
+    #     plt.figure(figsize=figsize)
+    #     ax1 = plt.subplot(131)
+    #     ax2 = plt.subplot(132)
+    #     ax3 = plt.subplot(133)
         
-        for param in ['g1', 'g2', 'size']:
-            ax = ax1 if param == 'g1' else ax2 if param == 'g2' else ax3
-            for color in self.filters:
-                # scatter plot the ellipticity component values
-                x = self.parameters['2'][color][param][:,0]
-                y = self.parameters['2'][color][param][:,1]
-                marker = 'o' if color==self.filters[1] else '^'
-                ax.plot(x, y, marker, color=self.colors[color], alpha=alpha, **plotArgs)
+    #     for param in ['g1', 'g2', 'size']:
+    #         ax = ax1 if param == 'g1' else ax2 if param == 'g2' else ax3
+    #         for color in self.filters:
+    #             # scatter plot the ellipticity component values
+    #             x = self.parameters['2'][color][param][:,0]
+    #             y = self.parameters['2'][color][param][:,1]
+    #             marker = 'o' if color==self.filters[1] else '^'
+    #             ax.plot(x, y, marker, color=self.colors[color], alpha=alpha, **plotArgs)
                 
-                if ellipse:
-                    # sigma of the bootstrap correlation coefficients
-                    sigma_plot = np.std(self.bootstrapR['2'][param][color])
-                    # add ellipse + add label with r +/- above sigma
-                    helper.pearsonEllipse(self.R['2'][param][color], ax, 
-                                           fr"$\rho$={self.R['2'][param][color]:.2f}$\pm${sigma_plot:.2f}",
-                                           x.mean(), y.mean(), x.std(), y.std(),
-                                           edgecolor=self.colors[color], ellipseArgs=ellipseArgs)
+    #             if ellipse:
+    #                 # sigma of the bootstrap correlation coefficients
+    #                 sigma_plot = np.std(self.bootstrapR['2'][param][color])
+    #                 # add ellipse + add label with r +/- above sigma
+    #                 helper.pearsonEllipse(self.R['2'][param][color], ax, 
+    #                                        fr"$\rho$={self.R['2'][param][color]:.2f}$\pm${sigma_plot:.2f}",
+    #                                        x.mean(), y.mean(), x.std(), y.std(),
+    #                                        edgecolor=self.colors[color], ellipseArgs=ellipseArgs)
                     
-            ax.set_xlabel('FWHM (30s) [arcsec]' if param=='size' else param + ' (30s)', fontsize=fontsize)
-            ax.set_ylabel('FWHM (next 30s) [arcsec]' if param=='size' else param + ' (next 30s)', fontsize=fontsize)
-            lims = ax.axis(option='equal')
-            lims = np.min(lims), np.max(lims)
-            ax.set(xlim=lims, ylim=lims)
-            ax.legend(frameon=False)
+    #         ax.set_xlabel('FWHM (30s) [arcsec]' if param=='size' else param + ' (30s)', fontsize=fontsize)
+    #         ax.set_ylabel('FWHM (next 30s) [arcsec]' if param=='size' else param + ' (next 30s)', fontsize=fontsize)
+    #         lims = ax.axis(option='equal')
+    #         lims = np.min(lims), np.max(lims)
+    #         ax.set(xlim=lims, ylim=lims)
+    #         ax.legend(frameon=False)
             
-        plt.tight_layout()
-        if save:
-            plt.savefig(f'../Plots/{self.source}/Results/30sParameters.png', bbox_to_inches='tight', dpi=200)
-            plt.close()
-        else:
-            plt.show()
+    #     plt.tight_layout()
+    #     if save:
+    #         plt.savefig(f'../Plots/{self.source}/Results/30sParameters.png', bbox_to_inches='tight', dpi=200)
+    #         plt.close()
+    #     else:
+    #         plt.show()
 
             
-    def plotEComps(self, figsize=(10,5), limits=[-.28,.24], fontsize=12, save=False):
-        '''
-        Scatter plot PSF ellipticity components against each other for 4 exposure times.
-        Illustration of the clouds of parameters shrinking with exposure time
-        '''
-        try:
-            e1 = np.array([self.parameters['15'][self.filters[0]]['g1'], self.parameters['15'][self.filters[1]]['g1']])
-            e2 = np.array([self.parameters['15'][self.filters[0]]['g2'], self.parameters['15'][self.filters[1]]['g2']])
-        except KeyError:
-            print("Make sure you've loaded in the correct dataset!")
+    # def plotEComps(self, figsize=(10,5), limits=[-.28,.24], fontsize=12, save=False):
+    #     '''
+    #     Scatter plot PSF ellipticity components against each other for 4 exposure times.
+    #     Illustration of the clouds of parameters shrinking with exposure time
+    #     '''
+    #     try:
+    #         e1 = np.array([self.parameters['15'][self.filters[0]]['g1'], self.parameters['15'][self.filters[1]]['g1']])
+    #         e2 = np.array([self.parameters['15'][self.filters[0]]['g2'], self.parameters['15'][self.filters[1]]['g2']])
+    #     except KeyError:
+    #         print("Make sure you've loaded in the correct dataset!")
             
-        times = [.06, 1, 14, 60]
-        idx = [0, 6, 11, 14, 0, 6, 11, 14]
+    #     times = [.06, 1, 14, 60]
+    #     idx = [0, 6, 11, 14, 0, 6, 11, 14]
         
-        fig = plt.figure(figsize=figsize)
-        for j in range(1,9):
-            if j<=4:
-                color = self.filters[0]
-                k = 0
-            else:
-                color = self.filters[1]
-                k = 1
-            a = fig.add_subplot(2, 4, j)
+    #     fig = plt.figure(figsize=figsize)
+    #     for j in range(1,9):
+    #         if j<=4:
+    #             color = self.filters[0]
+    #             k = 0
+    #         else:
+    #             color = self.filters[1]
+    #             k = 1
+    #         a = fig.add_subplot(2, 4, j)
 
-            # plot g1 vs g2 
-            a.plot(e1[k,:,idx[j-1]], e2[k,:,idx[j-1]], 'o', ms=4, alpha=0.65, color=self.colors[color])
+    #         # plot g1 vs g2 
+    #         a.plot(e1[k,:,idx[j-1]], e2[k,:,idx[j-1]], 'o', ms=4, alpha=0.65, color=self.colors[color])
 
-            if j not in [1,5]: a.set_yticks([])
-            if k != 1: 
-                a.set_xticks([])
-                a.set_title(str(times[j-1]) + ' sec')
+    #         if j not in [1,5]: a.set_yticks([])
+    #         if k != 1: 
+    #             a.set_xticks([])
+    #             a.set_title(str(times[j-1]) + ' sec')
 
-            a.set_ylim(limits), a.set_xlim(limits)
-            a.axhline(0, linestyle='--', color='gray'), a.axvline(0, linestyle='--', color='gray')
+    #         a.set_ylim(limits), a.set_xlim(limits)
+    #         a.axhline(0, linestyle='--', color='gray'), a.axvline(0, linestyle='--', color='gray')
 
-            if j in [4,8]:
-                legend_elements = [Line2D([0], [0], color=self.colors[color], lw=0, marker='o', label=f'{color}nm')]
-                plt.legend(frameon=False,handles=legend_elements)
-        fig.text(0.5, 0.00, '$g_1$', fontsize=12, ha='center', va='center')
-        fig.text(0.00, 0.5, '$g_2$', fontsize=12, ha='center', va='center', rotation='vertical')
-        plt.tight_layout();
-        if save: 
-            plt.savefig(f'../Plots/{self.source}/Results/ellipticityComponents.png', dpi=200, bbox_inches='tight')
-            plt.close(fig)
+    #         if j in [4,8]:
+    #             legend_elements = [Line2D([0], [0], color=self.colors[color], lw=0, marker='o', label=f'{color}nm')]
+    #             plt.legend(frameon=False,handles=legend_elements)
+    #     fig.text(0.5, 0.00, '$g_1$', fontsize=12, ha='center', va='center')
+    #     fig.text(0.00, 0.5, '$g_2$', fontsize=12, ha='center', va='center', rotation='vertical')
+    #     plt.tight_layout();
+    #     if save: 
+    #         plt.savefig(f'../Plots/{self.source}/Results/ellipticityComponents.png', dpi=200, bbox_inches='tight')
+    #         plt.close(fig)
     
     def analyzeEMag(self, Nboot=1000, expectedAsymptote=None, save=False, plot=True, delay=False, overlay=False):
         '''

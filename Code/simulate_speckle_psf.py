@@ -1,5 +1,5 @@
 import galsim
-import pws
+import psfws
 import numpy as np
 from astropy.io import fits
 import pandas as pd
@@ -24,7 +24,7 @@ def r0_from_vk(fwhm, L0):
 
     return r0
 
-def draw_atmosphere_params(random_state=None, save=None):
+def draw_atmosphere_params(args):
     '''
     draw inputs for galsim.Atmosphere simulation based on: 
     Tokovinin 2006 OTP model, seeing from LSST site characterization, and NOAA GFS model winds
@@ -33,16 +33,34 @@ def draw_atmosphere_params(random_state=None, save=None):
     - random_state to seed generation (default is None)
     - save: where to save the dict of parameters, except if None (default)
     '''
-    pgen = pws.gen_params.ParameterGenerator()
-    params = pgen.draw_parameters()
+    rng = np.random.default_rng(args.rnd_seed)
+    
+    ws = psfws.ParameterGenerator()
+    index = ws.data_gl.index[:300]
+    pt = rng.choice(index)
+    
+#     choose alt and az
+    az = rng.uniform() * 360
+    with open('./ZorroHRHeaders_05ThruMid07.p','rb') as file:
+        headers = pickle.load(file)
+    alt=-1
+    while alt < 50:
+        i = rng.choice([k for k in headers.keys()])
+        airmass = headers[i]['AIRMASS']
+        zenith = np.arccos(1/airmass) * 180/np.pi
+        alt = 90-zenith
+    
+    params = ws.get_parameters(pt, skycoord=True, alt=alt, az=az)
 
-    out = {'altitude': params['h']}
+    h = [h-ws.h0 for h in params['h']]
+    h[0] += 0.2
+    out = {'altitude': h}
     out['r0_weights'] = params['j']
     out['speed'] = params['speed'].flatten()
-    out['direction'] = [i*galsim.degrees for i in params['direction'].flatten()]
+    out['direction'] = [i*galsim.degrees for i in params['phi'].flatten()]
 
     # use random seed to seed a gaussian random number generator
-    gd = galsim.GaussianDeviate(galsim.BaseDeviate(random_state))
+    gd = galsim.GaussianDeviate(galsim.BaseDeviate(args.rnd_seed))
 
     # outer scale, use Josh's ImSim numbers (truncated log normal, median at 25m):
     L0 = 0
@@ -50,7 +68,7 @@ def draw_atmosphere_params(random_state=None, save=None):
         L0 = np.exp(gd() * .6 + np.log(25.))
     out['L0'] = [L0]
 
-    # set parameters of log-normal seeing distributino:
+    # set parameters of log-normal seeing distribution:
     # from the LSST SRD (or similar document)
     s = .452
     mu = -.5174
@@ -58,11 +76,16 @@ def draw_atmosphere_params(random_state=None, save=None):
     # set an r0 value
     fwhm = np.exp(gd() * s + mu)
 
-    out['r0_500'] = [r0_from_vk(fwhm, L0)]
+    targetFWHM = fwhm * airmass**0.6 * (args.color/500.)**(-0.3)
+    out['r0_500'] = [r0_from_vk(targetFWHM, L0)]
 
-    if save is not None:
-        with open(save, 'wb') as file:
-            pickle.dump(out, file)
+    if args.save_params_path is not None:
+        saveout = out.copy()
+        saveout['alt'] = alt
+        saveout['az'] = az
+        saveout['airmass'] = airmass
+        with open(args.save_params_path, 'wb') as file:
+            pickle.dump(saveout, file)
         
     ## or maybe store results in a dict that I can unzip/whatever directly into Atmosphere
     return out
@@ -94,13 +117,12 @@ def simulate_speckle_psf(args):
     nx, ny = 256, 256
     
     # draw random values of r0, r0_weights, altitude, speed, and direction
-    atm_args = draw_atmosphere_params(args.rnd_seed, args.save_params_path)
+    atm_args = draw_atmosphere_params(args)
     
     rng = galsim.BaseDeviate(args.rnd_seed)
 
-    # fix screen size by the highest speed of the layers and the telescope diameter
-    # except if speed > 40, which leads to memory errors
-    screen_size = min(40, max(atm_args['speed'])) * args.total_time + diameter
+    # fix screen size according to 'wrap' method from appendix test
+    screen_size = max(atm_args['speed']) * args.total_time / 3
     
     # number of exposures to fit in the total time
     N = int(args.total_time / args.exp_time) 

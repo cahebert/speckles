@@ -15,12 +15,11 @@ class AnalyzeParameters():
         info_dict = ahelp.load_dicts(info_paths)
 
         self.filters = (562, 832)
-        self.fdict = {'r':832, 'b':562}
+        self.fdict = {'r': 832, 'b': 562}
         self.source = source
         self.exp_type = exp_type
 
-
-        # double check that the simulations follow this plate scale thing too
+        # simulations follow this plate scale thing too
         self.scale = {self.filters[0]: .00991, self.filters[1]: .01093,
                       'b': .00991, 'r': .01093}
 
@@ -28,72 +27,82 @@ class AnalyzeParameters():
         self.process_results(result_dict, info_dict, exp_type)
 
     def process_results(self, results, info_dict, quiet=True):
-        '''run through result dict and output arrays/dataframes for each kind of result'''
+        '''Run through result dict and output arrays/dataframes for each kind of result.'''
         
         # take only the datasets which have total integration time of 300s:
-        sub_dict = {k:l for (k,l) in results.items() if len(l)*int(self.exp_type) == 300}
+        sub_dict = {k: l for (k, l) in results.items() if len(l)*int(self.exp_type) == 300}
         
         b_keys = np.sort([k for k in sub_dict.keys() if 'b' in k])
     
-        g1 = {'b':[], 'r':[]}
-        g2 = {'b':[], 'r':[]}
-        size = {'b':[], 'r':[]}
-        x = {'b':[], 'r':[]}
-        y = {'b':[], 'r':[]}
+        g1 = {'b': [], 'r': []}
+        g2 = {'b': [], 'r': []}
+        size = {'b': [], 'r': []}
+        x = {'b': [], 'r': []}
+        y = {'b': [], 'r': []}
         
         for bk in b_keys:
-            rk = bk.replace('b','r')
+            rk = bk.replace('b', 'r')
 
-            try:
-                b_errors = np.array([hsm_out.error_message != '' for hsm_out in sub_dict[bk]])
-                r_errors = np.array([hsm_out.error_message != '' for hsm_out in sub_dict[rk]])
-            except KeyError:
-                continue
-            else:
-                # check for error messages:
-                if (b_errors).any() or (r_errors).any():
-                    if not quiet: 
-                        print(f'dataset {bk} has an HSM error in moments estimation!')
-                else:
-                    # if no errors, put the shapes and sizes of results 
-                    for k, filt in zip([bk,rk], ['b','r']):
-                        g1[filt].append([hsm_out.observed_shape.g1 for hsm_out in sub_dict[k]])
-                        g2[filt].append([hsm_out.observed_shape.g2 for hsm_out in sub_dict[k]])
-                        size[filt].append([hsm_out.moments_sigma * 2.355 * self.scale[filt] for hsm_out in sub_dict[k]])
+#             try:
+#                 b_errors = np.array([hsm_out.error_message != '' for hsm_out in sub_dict[bk]])
+#                 r_errors = np.array([hsm_out.error_message != '' for hsm_out in sub_dict[rk]])
+#             except KeyError:
+#                 continue
+#             else:
+#                 # check for error messages:
+#                 if (b_errors).any() or (r_errors).any():
+#                     if not quiet:
+#                         print(f'dataset {bk} has an HSM error in moments estimation!')
+#                 else:
+#                     # if no errors, put the shapes and sizes of results
+#                     for k, filt in zip([bk, rk], ['b', 'r']):
+#                         g1[filt].append([hsm_out.observed_shape.g1 for hsm_out in sub_dict[k]])
+#                         g2[filt].append([hsm_out.observed_shape.g2 for hsm_out in sub_dict[k]])
+#                         size[filt].append([hsm_out.moments_sigma * 2.355 * self.scale[filt] for hsm_out in sub_dict[k]])
 
-                        x[filt].append(info_dict[k]['centroids']['x'] * self.scale[filt])
-                        y[filt].append(info_dict[k]['centroids']['y'] * self.scale[filt])
+#                         x[filt].append(info_dict[k]['centroids']['x'] * self.scale[filt])
+#                         y[filt].append(info_dict[k]['centroids']['y'] * self.scale[filt])
+            for k, filt in zip([bk, rk], ['b', 'r']):
+                g1[filt].append([params['g1'] for params in sub_dict[k]])
+                g2[filt].append([params['g2'] for params in sub_dict[k]])
+                size[filt].append([params['fwhm'] for params in sub_dict[k]])
+                x[filt].append([params['x'] * self.scale[filt] for params in sub_dict[k]])
+                y[filt].append([params['y'] * self.scale[filt] for params in sub_dict[k]])
 
-        self.g1 = {k: np.array(l).T for (k,l) in g1.items()}
-        self.g2 = {k: np.array(l).T for (k,l) in g2.items()}
+#                 x[filt].append(info_dict[k]['centroids']['x'] * self.scale[filt])
+#                 y[filt].append(info_dict[k]['centroids']['y'] * self.scale[filt])
+
+        self.g1 = {k: np.array(l).T for (k, l) in g1.items()}
+        self.g2 = {k: np.array(l).T for (k, l) in g2.items()}
         self.g = {k: np.hypot(self.g1[k], self.g2[k]) for k in g1.keys()}
-        self.size = {k: np.array(l).T for (k,l) in size.items()}
-        self.x = {k: np.array(l).T for (k,l) in x.items()}
-        self.y = {k: np.array(l).T for (k,l) in y.items()}
+        self.size = {k: np.array(l).T for (k, l) in size.items()}
+        self.x = {k: np.array(l).T for (k, l) in x.items()}
+        self.y = {k: np.array(l).T for (k, l) in y.items()}
 
     def correlate_bins(self, parameters=['g1', 'g2', 'g', 'size'], bootstrap=False, B=1000):
         '''return correlation coefficients for the parameter specified. Optional: return bootstrap samples'''
-        if self.exp_type == 'acc': 
+        if self.exp_type == 'acc':
             raise ValueError("hmm, are you sure you have the right data loaded?")
 
         for param in parameters:
             bin_dict = {'g1': self.g1, 'g2': self.g2, 'g': self.g, 'size': self.size}[param]
 
             n_bins = bin_dict['r'].shape[0]
-            bin_pairs = [l for k in [[(i,j) for j in range(i,n_bins) if i!=j] for i in range(n_bins)] for l in k]
+            bin_pairs = [l for k in [[(i, j) for j in range(i, n_bins)
+                         if i != j] for i in range(n_bins)] for l in k]
 
-            try: 
+            try:
                 self.corrs[param] = {}
             except AttributeError:
                 self.corrs = {param: {}}
 
-            for filt in ['r','b']:
+            for filt in ['r', 'b']:
                 if bootstrap:
                     self.corrs[param][filt] = {f'{i}{j}': ahelp.bootstrap_correlation(bin_dict[filt][i], bin_dict[filt][j], B)
-                                               for (i,j) in bin_pairs}
+                                               for (i, j) in bin_pairs}
                 else:
                     self.corrs[param][filt] = {f'{i}{j}': np.corrcoef(bin_dict[filt][i], bin_dict[filt][j], rowvar=False)[0,-1] 
-                                               for (i,j) in bin_pairs}
+                                               for (i, j) in bin_pairs}
 
     def calculate_chromaticity(self):
         '''calculate the chromatic exponent of psf size dependence on wavelength'''

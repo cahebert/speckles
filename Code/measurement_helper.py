@@ -6,8 +6,10 @@ import sklearn.utils
 import errno
 import os
 from astropy.io import fits
+import lmfit
+from pynverse import inversefunc
 
-def data_loader(fits_path):
+def data_loader(fits_path, source):
     '''load fits and extract image and header data'''
     imgs = np.zeros((len(fits_path)*1000, 256, 256))
     header = []
@@ -24,6 +26,13 @@ def data_loader(fits_path):
         if 'r' in f: # this is the 832 wavelength
             data = data[:,:,::-1]
         
+        if source=='data':
+            # convert to electron counts
+            head = hdu[0].header
+            gain = head['EMGAIN'] / head['PREAMP']
+            data /= gain
+        else:
+            data *= 1e6
         imgs[i*1000:(i+1)*1000] = data
         header.append(hdu[0].header)
         hdu.close()
@@ -226,3 +235,126 @@ def estimate_moments_HSM(images, exp_mask_dict=False, save_dict={'save':True, 'p
     else:
         return fitResults
     
+#########
+
+def r0_from_vk(fwhm, L0):
+    '''
+    given FWHM values (in arcsec), return the r0 values (in cm) as predicted 
+    by Van Karman turbulence with the input L0
+    '''
+    def fwhm_vankarman(r0, L0):
+        kolm_term = (0.976 * .5) / (4.85 * r0)
+        vk_correction = np.sqrt(1 - 2.183 * (r0 / L0)**(0.356)) 
+        return kolm_term * vk_correction    
+
+    if type(fwhm) == np.ndarray or type(L0)==np.ndarray:
+        r0 = np.array([inversefunc(fwhm_vankarman, fwhm[i], 
+                                   args=(L0[i]), domain=[.0001,1]) for i in range(500)])
+    else:
+        r0 = inversefunc(fwhm_vankarman, fwhm, args=(L0), domain=[.0001,1])
+
+    return r0
+
+def zorro_psf_model(p, scale=.01, noise=False, profile='Kolmogorov'):
+    '''
+    params should include:
+    - PSF flux
+    - size (fwhm) !!units: arcsec
+    - x,y centroid offset from center of image !!units: pixels
+    - g1,g2 shear 
+    - background level
+    '''
+    if profile=='vonKarman':
+        r0 = r0_from_vk(p['fwhm'].value, p['L0'].value)
+        gauss = galsim.VonKarman(flux=p['flux'], r0_500=r0, L0=p['L0'], lam=562)
+    elif profile=='Kolmogorov':
+        gauss = galsim.Kolmogorov(flux=p['flux'], fwhm=p['fwhm'])
+    elif profile=='Gaussian':
+        gauss = galsim.Gaussian(flux=p['flux'], fwhm=p['fwhm'])
+    shear_gauss = gauss.shear(g1=p['g1'], g2=p['g2'])
+    shift_shear_gauss = shear_gauss.shift(0,0)
+        
+    img = shift_shear_gauss.drawImage(nx=256, ny=256, 
+                                      scale=scale, 
+                                      offset=(p['x'],p['y']), 
+                                      use_true_center=False,
+                                      dtype=np.float64)
+    
+    if noise: img.addNoise(galsim.PoissonNoise(sky_level=p['background']))
+    
+    return p['background'] + img.array
+
+def fit_profile_moments(data, scale, profile='Kolmogorov', subtract=False, exp_mask=None):
+    if subtract:
+        data = np.copy(data)
+        exp_mask_dict = {0: exp_mask} if exp_mask else False
+        subtract_background([data], exp_mask_dict=exp_mask_dict)
+
+    def model_residual(p, data, **args):
+        resid = data - zorro_psf_model(p, args['scale'], profile=profile)
+        out = resid / np.sqrt(data)
+        out[data==0] = 0
+        return out.flatten()
+
+    def construct_params(fwhm=.5, x=0, y=0):
+        p = lmfit.parameter.Parameters()
+        pdict = {'flux': lmfit.parameter.Parameter(name='flux', value=np.sum(data), min=np.sum(data)-1e2, max=np.sum(data)+1e2), 
+                 'fwhm': lmfit.parameter.Parameter(name='fwhm', value=fwhm, min=.1, max=2.5), 
+                 'x': lmfit.parameter.Parameter(name='x', value=x, min=-100, max=100), 
+                 'y': lmfit.parameter.Parameter(name='y', value=y, min=-100, max=100), 
+                 'g1': lmfit.parameter.Parameter(name='g1', value=0, min=-.5, max=.5), 
+                 'g2': lmfit.parameter.Parameter(name='g2', value=0, min=-.5, max=.5),
+                 'background': lmfit.parameter.Parameter(name='background', value=0, min=-100, max=500)}
+        if profile=='vonKarman': 
+            pdict['L0'] = lmfit.parameter.Parameter(name='L0', value=20, min=1, max=250)
+        for k,v in pdict.items():
+            p[k] = v
+        return p
+
+    params = construct_params(fwhm=.5)
+    lmout = lmfit.minimize(model_residual, params, args=[data], kws={'scale':scale})
+    
+    return lmout
+
+
+def param_fit(images, scale, exp_mask_dict=False, save_dict={'save':True, 'path':None}, subtract=False):
+    '''
+    Estimate the moments of the PSF images using HSM.
+    TO DO:
+    - fit third moment of PSF as well?
+    '''
+    # length of sequence to fit
+    N = len(images)
+
+    fitResults = []
+
+    for i in range(N):
+        # try to assign exp_mask to the entry in exp_mask_dict
+        try:
+            exp_mask = exp_mask_dict[i]
+        except TypeError:
+            # no exp_mask_dict object => this dataset has no masks.
+            exp_mask = None
+        except KeyError:
+            # no mask for exposure i => set to None.
+            exp_mask = None
+
+        # fit the image(s)
+        mom_result = fit_profile_moments(images[i], scale, exp_mask=exp_mask, subtract=subtract)
+
+        if mom_result.message != 'Fit succeeded.': 
+            print("fit did not succeed?!")
+            return False
+        # put results in a list
+        fitResults.append(mom_result)
+        
+    if save_dict['save'] == True:
+        try: 
+            # Save HSM output list to a pickle file.
+            with open(save_dict['path'], 'wb') as file:
+                pickle.dump(fitResults, file)
+        except FileNotFoundError:
+            print('Save file not found. Try adding/checking path in save_dict')
+        return True
+    else:
+        return fitResults

@@ -10,19 +10,21 @@ class ExtractParameters():
         '''load the data into the class'''
         if 'r' in fits_path_list[0].split('/')[-1]:
             self.color = 'r'
+            self.scale = .01093
         elif 'b' in fits_path_list[0].split('/')[-1]:
             self.color = 'b'
+            self.scale = .00991
 
         self.source = source
         self.mask = mask
 
-        loaded = mhelp.data_loader(fits_path_list)
+        loaded = mhelp.data_loader(fits_path_list, source)
         if loaded:
-            self.imgs, _ = loaded
+            self.imgs, self.header = loaded
         else: 
             return False
 
-        mhelp.subtract_background(self.imgs, exp_mask_dict=self.mask)
+#         mhelp.subtract_background(self.imgs, exp_mask_dict=self.mask)
 
     def bin_psf(self, bin_exp, override=True):
         '''
@@ -32,9 +34,9 @@ class ExtractParameters():
         residual = bin_exp % .06
         if residual != 0 and override is False:
             raise ValueError(f"Can't perfectly divide data into exposure bins of size {bin_exp}s")
-        
-        bin_size = int(bin_exp / .06) # in number of exposures
-        n_bins = int(self.imgs.shape[0] / bin_size) # number of bins per dataset
+
+        bin_size = int(bin_exp / .06)  # in number of exposures
+        n_bins = int(self.imgs.shape[0] / bin_size)  # number of bins per dataset
 
         binned = [self.imgs[n * bin_size:(n + 1) * bin_size].sum(axis=0) / bin_size for n in range(n_bins)]
         return binned, bin_exp, False
@@ -58,11 +60,11 @@ class ExtractParameters():
                 psf += self.imgs[exposure]
                 accumulated.append(np.copy(psf))
 
-            return accumulated, np.linspace(1,1000,1000)
+            return accumulated, np.linspace(1, 1000, 1000)
         else:
             for exposure in indices[1:]:
                 psf = self.imgs[0:exposure + 1].sum(axis=0)
-                accumulated.append(np.copy(psf) / (exposure + 1))
+                accumulated.append(np.copy(psf))# / (exposure + 1))
             
             return accumulated, indices, False
 
@@ -77,34 +79,35 @@ class ExtractParameters():
         for exps in bins:
             if type(exps)==str:
                 accumulated, _, mask = self.accumulate_psf(manual=False)
-                parameters[exps] = mhelp.estimate_moments_HSM(accumulated, exp_mask_dict=mask, save_dict={'save':False})
+                parameters[exps] = mhelp.param_fit(accumulated, scale=self.scale, exp_mask_dict=mask, save_dict={'save':False})
             else:
                 binned, _, mask = self.bin_psf(exps)
-                parameters[exps] = mhelp.estimate_moments_HSM(binned, exp_mask_dict=mask, save_dict={'save':False})
+                parameters[exps] = mhelp.param_fit(binned, scale=self.scale, exp_mask_dict=mask, save_dict={'save':False})
 
         return parameters
+
 
 if __name__ == '__main__':
     from argparse import ArgumentParser
     parser = ArgumentParser()
 
-    parser.add_argument("--obsdate", type=str, default='20190913', 
+    parser.add_argument("--obsdate", type=str, default='20190913',
                         help="path to desired data directory within Zorro")
-    parser.add_argument("--local_path", type=str, 
-                        default='/Users/clairealice/Documents/research/speckles/intermediates/', 
+    parser.add_argument("--local_path", type=str,
+                        default='/Users/clairealice/Documents/research/speckles/intermediates/',
                         help="path to local directory for saving output")
-    parser.add_argument('--zorro', type=str, default='/Volumes/My Passport/Zorro/', 
+    parser.add_argument('--zorro', type=str, default='/Volumes/My Passport/Zorro/',
                         help="path to main Zorro data directory")
     parser.add_argument('-masks', default=False, action='store_true')
     parser.add_argument('--stars', default='bright', type=str)
     args = parser.parse_args()
-    
-    data_path = os.path.join(args.zorro, args.obsdate) 
+
+    data_path = os.path.join(args.zorro, args.obsdate)
     dict_path = os.path.join(args.local_path, f"accepted_info_{args.obsdate}_{args.stars}.p")
     if args.masks:
-       result_path = os.path.join(args.local_path, f"parameters_{args.obsdate}_{args.stars}_wmask.p")
+        result_path = os.path.join(args.local_path, f"parameters_{args.obsdate}_{args.stars}_wmask.p")
     else:
-       result_path = os.path.join(args.local_path, f"parameters_{args.obsdate}_{args.stars}.p")
+        result_path = os.path.join(args.local_path, f"parameters_{args.obsdate}_{args.stars}.p")
 
     # try to open info dict
     try:
@@ -116,9 +119,9 @@ if __name__ == '__main__':
     if args.stars == 'bright':
         exp_bins = [5, 15, 30, 60, 'acc']
     elif args.stars == 'faint':
-        exp_bins = [30, 60]
+        exp_bins = [10, 15]  # [30, 60]
     # initialize result dict as nested dictionary, with exposure lengths as outermost key
-    result_dict = {exps:{} for exps in exp_bins}
+    result_dict = {exps: {} for exps in exp_bins}
 
     for s in list(info_dict.keys()):
         if args.masks:
@@ -129,14 +132,14 @@ if __name__ == '__main__':
         print(s)
         data = ExtractParameters(info_dict[s]['fits'], mask)
         out = data.extract_parameters(bins=exp_bins)
-        if out: 
-            # save results into result_dict 
+        if out:
+            # save results into result_dict
             for exps in exp_bins:
                 result_dict[exps][s] = out[exps]
 
     try:
         pickle.dump(result_dict, open(result_path, 'wb'))
-    # if there's an error, try saving with some random numbers appended 
+    # if there's an error, try saving with some random numbers appended
     # this should probably be only with a specific kind of error
     except:
         pickle.dump(result_dict, open(result_path[:-2] + f'_{np.random.uniform():4f}.p', 'wb'))

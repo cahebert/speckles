@@ -7,7 +7,6 @@ import errno
 import os
 from astropy.io import fits
 import lmfit
-from pynverse import inversefunc
 
 def data_loader(fits_path, source):
     '''load fits and extract image and header data'''
@@ -30,9 +29,9 @@ def data_loader(fits_path, source):
             # convert to electron counts
             head = hdu[0].header
             gain = head['EMGAIN'] / head['PREAMP']
-            data /= gain
+            if gain != 0: data /= gain 
         else:
-            data *= 1e6
+            data *= 1e7
         imgs[i*1000:(i+1)*1000] = data
         header.append(hdu[0].header)
         hdu.close()
@@ -237,24 +236,6 @@ def estimate_moments_HSM(images, exp_mask_dict=False, save_dict={'save':True, 'p
     
 #########
 
-def r0_from_vk(fwhm, L0):
-    '''
-    given FWHM values (in arcsec), return the r0 values (in cm) as predicted 
-    by Van Karman turbulence with the input L0
-    '''
-    def fwhm_vankarman(r0, L0):
-        kolm_term = (0.976 * .5) / (4.85 * r0)
-        vk_correction = np.sqrt(1 - 2.183 * (r0 / L0)**(0.356)) 
-        return kolm_term * vk_correction    
-
-    if type(fwhm) == np.ndarray or type(L0)==np.ndarray:
-        r0 = np.array([inversefunc(fwhm_vankarman, fwhm[i], 
-                                   args=(L0[i]), domain=[.0001,1]) for i in range(500)])
-    else:
-        r0 = inversefunc(fwhm_vankarman, fwhm, args=(L0), domain=[.0001,1])
-
-    return r0
-
 def zorro_psf_model(p, scale=.01, noise=False, profile='Kolmogorov'):
     '''
     params should include:
@@ -264,10 +245,7 @@ def zorro_psf_model(p, scale=.01, noise=False, profile='Kolmogorov'):
     - g1,g2 shear 
     - background level
     '''
-    if profile=='vonKarman':
-        r0 = r0_from_vk(p['fwhm'].value, p['L0'].value)
-        gauss = galsim.VonKarman(flux=p['flux'], r0_500=r0, L0=p['L0'], lam=562)
-    elif profile=='Kolmogorov':
+    if profile=='Kolmogorov':
         gauss = galsim.Kolmogorov(flux=p['flux'], fwhm=p['fwhm'])
     elif profile=='Gaussian':
         gauss = galsim.Gaussian(flux=p['flux'], fwhm=p['fwhm'])
@@ -289,24 +267,25 @@ def fit_profile_moments(data, scale, profile='Kolmogorov', subtract=False, exp_m
         data = np.copy(data)
         exp_mask_dict = {0: exp_mask} if exp_mask else False
         subtract_background([data], exp_mask_dict=exp_mask_dict)
+        
+    badPix = 1 - exp_mask if exp_mask else np.zeros(data.shape)
 
     def model_residual(p, data, **args):
         resid = data - zorro_psf_model(p, args['scale'], profile=profile)
         out = resid / np.sqrt(data)
         out[data==0] = 0
+        out[badPix==1] = 0
         return out.flatten()
 
     def construct_params(fwhm=.5, x=0, y=0):
         p = lmfit.parameter.Parameters()
-        pdict = {'flux': lmfit.parameter.Parameter(name='flux', value=np.sum(data), min=np.sum(data)-1e2, max=np.sum(data)+1e2), 
+        pdict = {'flux': lmfit.parameter.Parameter(name='flux', value=np.sum(data), min=np.sum(data)*1e-1, max=np.sum(data)*1e2),
                  'fwhm': lmfit.parameter.Parameter(name='fwhm', value=fwhm, min=.1, max=2.5), 
                  'x': lmfit.parameter.Parameter(name='x', value=x, min=-100, max=100), 
                  'y': lmfit.parameter.Parameter(name='y', value=y, min=-100, max=100), 
                  'g1': lmfit.parameter.Parameter(name='g1', value=0, min=-.5, max=.5), 
                  'g2': lmfit.parameter.Parameter(name='g2', value=0, min=-.5, max=.5),
-                 'background': lmfit.parameter.Parameter(name='background', value=0, min=-100, max=500)}
-        if profile=='vonKarman': 
-            pdict['L0'] = lmfit.parameter.Parameter(name='L0', value=20, min=1, max=250)
+                 'background': lmfit.parameter.Parameter(name='background', value=0, min=-100, max=np.min(data)+100)}
         for k,v in pdict.items():
             p[k] = v
         return p

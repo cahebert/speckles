@@ -14,7 +14,7 @@ class DataFilter():
         self.info = {'fits': fits_path_list}
         self.star = star_type
 
-        loaded = mhelp.data_loader(fits_path_list)
+        loaded = mhelp.data_loader(fits_path_list, source)
         if loaded:
             self.imgs, self.header = loaded
         else: 

@@ -26,22 +26,44 @@ class AnalyzeParameters():
         # use a sub function to sort through the results /info dict and pull out the info desired
         self.process_results(result_dict, info_dict, exp_type)
 
-    def process_results(self, results, info_dict, quiet=True):
+    def process_results(self, results, info_dict, inttime=60, quiet=True):
         '''Run through result dict and output arrays/dataframes for each kind of result.'''
-        
-        # take only the datasets which have total integration time of 300s:
-        sub_dict = {k: l for (k, l) in results.items() if len(l)*int(self.exp_type) == 300}
-        
-        b_keys = np.sort([k for k in sub_dict.keys() if 'b' in k])
+        if inttime==300:
+            # take only the datasets which have total integration time of inttime (300 for faint):
+            results = {k: l for (k, l) in results.items() if len(l)*int(self.exp_type) == inttime}
+        b_keys = np.sort([k for k in results.keys() if 'b' in k])
     
-        g1 = {'b': [], 'r': []}
-        g2 = {'b': [], 'r': []}
-        size = {'b': [], 'r': []}
-        x = {'b': [], 'r': []}
-        y = {'b': [], 'r': []}
+        g1 = {'b': [], 'r': [], 'bstderr': [], 'rstderr': []}
+        g2 = {'b': [], 'r': [], 'bstderr': [], 'rstderr': []}
+        size = {'b': [], 'r': [], 'bstderr': [], 'rstderr': []}
+        x = {'b': [], 'r': [], 'bstderr': [], 'rstderr': []}
+        y = {'b': [], 'r': [], 'bstderr': [], 'rstderr': []}
         
         for bk in b_keys:
             rk = bk.replace('b', 'r')
+            for k, filt in zip([bk, rk], ['b', 'r']):
+                for params in results[k]:
+                    if params.message != 'Fit succeeded.':
+                        if not quiet:
+                            print(f'dataset {bk} has a fit error in moments estimation!')
+                g1[filt].append([p.params['g1'].value for p in results[k]])
+                g2[filt].append([p.params['g2'].value for p in results[k]])
+                size[filt].append([p.params['fwhm'].value for p in results[k]])
+                x[filt].append([p.params['x'].value * self.scale[filt] for p in results[k]])
+                y[filt].append([p.params['y'].value * self.scale[filt] for p in results[k]])
+                
+                g1[filt+'stderr'].append([p.params['g1'].stderr for p in results[k]])
+                g2[filt+'stderr'].append([p.params['g2'].stderr for p in results[k]])
+                size[filt+'stderr'].append([p.params['fwhm'].stderr for p in results[k]])
+                x[filt+'stderr'].append([p.params['x'].stderr * self.scale[filt] for p in results[k]])
+                y[filt+'stderr'].append([p.params['y'].stderr * self.scale[filt] for p in results[k]])
+
+        self.g1 = {k: np.array(l).T for (k, l) in g1.items()}
+        self.g2 = {k: np.array(l).T for (k, l) in g2.items()}
+        self.g = {k: np.hypot(self.g1[k], self.g2[k]) for k in g1.keys()}
+        self.size = {k: np.array(l).T for (k, l) in size.items()}
+        self.x = {k: np.array(l).T for (k, l) in x.items()}
+        self.y = {k: np.array(l).T for (k, l) in y.items()}
 
 #             try:
 #                 b_errors = np.array([hsm_out.error_message != '' for hsm_out in sub_dict[bk]])
@@ -62,22 +84,6 @@ class AnalyzeParameters():
 
 #                         x[filt].append(info_dict[k]['centroids']['x'] * self.scale[filt])
 #                         y[filt].append(info_dict[k]['centroids']['y'] * self.scale[filt])
-            for k, filt in zip([bk, rk], ['b', 'r']):
-                g1[filt].append([params['g1'] for params in sub_dict[k]])
-                g2[filt].append([params['g2'] for params in sub_dict[k]])
-                size[filt].append([params['fwhm'] for params in sub_dict[k]])
-                x[filt].append([params['x'] * self.scale[filt] for params in sub_dict[k]])
-                y[filt].append([params['y'] * self.scale[filt] for params in sub_dict[k]])
-
-#                 x[filt].append(info_dict[k]['centroids']['x'] * self.scale[filt])
-#                 y[filt].append(info_dict[k]['centroids']['y'] * self.scale[filt])
-
-        self.g1 = {k: np.array(l).T for (k, l) in g1.items()}
-        self.g2 = {k: np.array(l).T for (k, l) in g2.items()}
-        self.g = {k: np.hypot(self.g1[k], self.g2[k]) for k in g1.keys()}
-        self.size = {k: np.array(l).T for (k, l) in size.items()}
-        self.x = {k: np.array(l).T for (k, l) in x.items()}
-        self.y = {k: np.array(l).T for (k, l) in y.items()}
 
     def correlate_bins(self, parameters=['g1', 'g2', 'g', 'size'], bootstrap=False, B=1000):
         '''return correlation coefficients for the parameter specified. Optional: return bootstrap samples'''
@@ -193,9 +199,9 @@ if __name__ == '__main__':
     dict_path = os.path.join(args.local_path, f"accepted_info_{args.obsdate}_{args.stars}.p")
 
     if args.masks:
-       result_path = os.path.join(args.local_path, f"parameters_{args.obsdate}_{args.stars}_wmask.p")
+        result_path = os.path.join(args.local_path, f"parameters_{args.obsdate}_{args.stars}_wmask.p")
     else:
-       result_path = os.path.join(args.local_path, f"parameters_{args.obsdate}_{args.stars}.p")
+        result_path = os.path.join(args.local_path, f"parameters_{args.obsdate}_{args.stars}.p")
 
 
     data = AnalyzeParameters(result_path, info_path, 30)

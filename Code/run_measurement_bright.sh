@@ -1,0 +1,7 @@
+#!/bin/
+
+for i in 20190520 20190620 20190621 20190622 20190715 20190716 20190718 20190719 20190720 20190721 20190913 20190914 20190928 20191009 20191010
+do
+echo "analysing obs date "$i
+python parameter_measurement.py --stars='bright' --obsdate=$i
+done

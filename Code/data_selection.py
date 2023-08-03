@@ -90,7 +90,7 @@ class DataFilter():
     def filter_data(self, cr_scan=False):
         '''run all the data checks. if dataset passes, save self.info'''
         # run header check
-        if self.check_header():
+        if self.check_header() or self.source=='sim':
             ## run flux check
             # if self.check_wander():
             # run center/size cut
@@ -120,40 +120,64 @@ if __name__ == '__main__':
                         help="path to main Zorro data directory")
     parser.add_argument('-masks', default=False, action='store_true')
     parser.add_argument('--stars', default='bright', type=str)
+    parser.add_argument('--source', default='data', type=str)
     args = parser.parse_args()
     
     data_path = os.path.join(args.zorro, args.obsdate) 
-    dict_path = os.path.join(args.local_path, 
-                        f"accepted_info_{args.obsdate}_{args.stars}.p")
+    
+    if args.source=='data':
+        dict_path = os.path.join(args.local_path, f"accepted_info_{args.obsdate}_{args.stars}.p")
 
-    # try to open info dict
-    try:
-        info_dict = pickle.load(open(dict_path, 'rb'))
-    # if it doesn't exist, then intialize
-    except:
-        info_dict = {}
-
-    # parse the log file and return a dict of some info
-    files_dict = fhelp.parse_log_file(args.obsdate, args.stars, args.zorro)
-    for star in files_dict.keys():
-        # file names root 
-        files = list(files_dict[star]['fn'])
-        print(star, files)
-
-        # only want one file for bright stars! so if more, just choose one randomly
-        if args.stars == 'bright':
-            if len(files)>1:
-                files = [np.random.choice(files)]
-
-        # make list of paths for these files
-        fits_paths = [os.path.join(data_path, f + '.fits.bz2') for f in files]
+        # try to open info dict
         try:
-            data = DataFilter(fits_paths, star_type=args.stars)
-        except ValueError: # means there was a problem with the file/data wasn't the right size
-            continue
+            info_dict = pickle.load(open(dict_path, 'rb'))
+        # if it doesn't exist, then intialize
+        except:
+            info_dict = {}
 
-        if data.filter_data(args.masks):
-            info_dict[star] = data.info
+        # parse the log file and return a dict of some info
+        files_dict = fhelp.parse_log_file(args.obsdate, args.stars, args.zorro)
+        
+        for star in files_dict.keys():
+            # file names root 
+            files = list(files_dict[star]['fn'])
+            print(star, files)
+
+            # only want one file for bright stars! so if more, just choose one randomly
+            if args.stars == 'bright':
+                if len(files)>1:
+                    files = [np.random.choice(files)]
+
+            # make list of paths for these files
+            fits_paths = [os.path.join(data_path, f + '.fits.bz2') for f in files]
+            try:
+                data = DataFilter(fits_paths, star_type=args.stars)
+            except ValueError: # means there was a problem with the file/data wasn't the right size
+                continue
+
+            if data.filter_data(args.masks):
+                info_dict[star] = data.info
+
+    elif args.source=='sim':
+        dict_path = os.path.join(args.local_path, f"accepted_info_sim_{args.stars}.p")
+        # try to open info dict
+        try:
+            info_dict = pickle.load(open(dict_path, 'rb'))
+        # if it doesn't exist, then intialize
+        except:
+            info_dict = {}
+            
+        fits_paths = [f for f in os.listdir(args.local_path) if '.fits' in f]
+        stars = [f.split('_')[-1].strip('.fits') for f in fits_paths]
+        
+        for star in stars:
+            try:
+                data = DataFilter(fits_paths, star_type=args.stars, source='sim')
+            except ValueError: # means there was a problem with the file/data wasn't the right size
+                continue
+                
+            if data.filter_data(args.masks):
+                info_dict[star] = data.info
 
     info_dict = fhelp.match_filter_pairs(info_dict)
     
